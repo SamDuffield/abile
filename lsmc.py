@@ -25,7 +25,7 @@ def update(skill_p1: jnp.ndarray,
            skill_p2: jnp.ndarray,
            match_result: int,
            s_and_epsilon: jnp.ndarray,
-           random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+           random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     s, epsilon = s_and_epsilon
 
     z_mean = skill_p1 - skill_p2
@@ -41,10 +41,12 @@ def update(skill_p1: jnp.ndarray,
                         p_vp1,
                         p_vp2])[match_result]
 
+    predict_probs = jnp.array([pdraw.mean(), p_vp1.mean(), p_vp2.mean()])
+
     weight /= weight.sum()
 
     resample_inds = random.choice(random_key, a=jnp.arange(len(weight)), p=weight, shape=weight.shape)
-    return skill_p1[resample_inds], skill_p2[resample_inds]
+    return skill_p1[resample_inds], skill_p2[resample_inds], predict_probs
 
 
 filter = get_random_filter(propagate, update)

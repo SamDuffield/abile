@@ -23,7 +23,7 @@ def update(skill_p1: float,
            skill_p2: float,
            match_result: int,
            s_and_k: jnp.ndarray,
-           _: Any) -> Tuple[float, float]:
+           _: Any) -> Tuple[float, float, jnp.ndarray]:
     s, k = s_and_k
 
     prob_vp1 = 1 / (1 + 10 ** ((skill_p2 - skill_p1) / s))
@@ -35,7 +35,10 @@ def update(skill_p1: float,
 
     skill_p1 = skill_p1 + k * (w_p1 - prob_vp1)
     skill_p2 = skill_p1 + k * (w_p2 - prob_vp2)
-    return skill_p1, skill_p2
+
+    predict_probs = jnp.array([0., prob_vp1, prob_vp2])
+
+    return skill_p1, skill_p2, predict_probs
 
 
 filter = get_basic_filter(propagate, update)

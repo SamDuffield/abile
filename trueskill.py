@@ -83,7 +83,7 @@ def update(skill_p1: jnp.ndarray,
            skill_p2: jnp.ndarray,
            match_result: int,
            s_and_epsilon: jnp.ndarray,
-           _: Any) -> Tuple[jnp.ndarray, jnp.ndarray]:
+           _: Any) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     # see TrueSkill through Time for equations
     # https://www.microsoft.com/en-us/research/wp-content/uploads/2008/01/NIPS2007_0931.pdf
     s, epsilon = s_and_epsilon
@@ -96,7 +96,20 @@ def update(skill_p1: jnp.ndarray,
     skills = jnp.array([skills_draw,
                         skills_vp1,
                         skills_vp2])[match_result]
-    return skills[0], skills[1]
+
+    z_mean = skill_p1[0] - skill_p2[0]
+    z_sd = jnp.sqrt(1 + s ** 2)
+
+    pz_smaller_than_epsilon = norm.cdf((epsilon - z_mean) / z_sd)
+    pz_smaller_than_minus_epsilon = norm.cdf((-epsilon - z_mean) / z_sd)
+
+    pdraw = pz_smaller_than_epsilon - pz_smaller_than_minus_epsilon
+    p_vp1 = 1 - pz_smaller_than_epsilon
+    p_vp2 = pz_smaller_than_minus_epsilon
+
+    predict_probs = jnp.array([pdraw, p_vp1, p_vp2])
+
+    return skills[0], skills[1], predict_probs
 
 
 filter = get_basic_filter(propagate, update)

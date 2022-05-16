@@ -29,7 +29,7 @@ def update(skill_p1: jnp.ndarray,
            skill_p2: jnp.ndarray,
            match_result: int,
            _: Any,
-           __: Any) -> Tuple[jnp.ndarray, jnp.ndarray]:
+           __: Any) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     # see The Glicko system for equations
     # https://www.microsoft.com/en-us/research/wp-content/uploads/2008/01/NIPS2007_0931.pdf
 
@@ -54,7 +54,10 @@ def update(skill_p1: jnp.ndarray,
 
     new_mu_p1 = mu_p1 + 1 * new_var_p1 * g_p1 * (w_p1 - e_p1)
     new_mu_p2 = mu_p2 + 1 * new_var_p2 * g_p2 * (w_p2 - e_p2)
-    return jnp.array([new_mu_p1, new_var_p1]), jnp.array([new_mu_p2, new_var_p2])
+
+    predict_probs = jnp.array([0., e_p1, e_p2])
+
+    return jnp.array([new_mu_p1, new_var_p1]), jnp.array([new_mu_p2, new_var_p2]), predict_probs
 
 
 filter = get_basic_filter(propagate, update)
