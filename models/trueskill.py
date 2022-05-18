@@ -1,7 +1,8 @@
-from typing import Tuple, Any
+from typing import Tuple, Any, Union, Sequence
 
-from jax import numpy as jnp
+from jax import numpy as jnp, random
 from jax.scipy.stats import norm
+from jax.lax import scan
 
 from filtering import get_basic_filter
 
@@ -19,7 +20,7 @@ def propagate(skills: jnp.ndarray,
               tau: float,
               _: Any) -> jnp.ndarray:
     skills = jnp.atleast_2d(skills)
-    return skills.at[:, -1].set(skills[:, -1] + tau ** 2 * time_interval)
+    return jnp.squeeze(skills.at[:, -1].set(skills[:, -1] + tau ** 2 * time_interval))
 
 
 def v(t: float, alpha: float) -> float:
@@ -113,3 +114,57 @@ def update(skill_p1: jnp.ndarray,
 
 
 filter = get_basic_filter(propagate, update)
+
+
+def simulate(init_player_times: jnp.ndarray,
+             init_player_skills: jnp.ndarray,
+             match_times: jnp.ndarray,
+             match_player_indices_seq: jnp.ndarray,
+             tau: float,
+             s_and_epsilon: Union[jnp.ndarray, Sequence],
+             random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+
+    s, epsilon = s_and_epsilon
+
+    def scan_body(carry,
+                  match_ind: int) \
+            -> Tuple[Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
+        player_times, player_skills, int_random_key = carry
+
+        int_random_key, prop_key_p1, prop_key_p2, match_key = random.split(int_random_key, 4)
+
+        match_time = match_times[match_ind]
+        match_player_indices = match_player_indices_seq[match_ind]
+
+        skill_p1 = player_skills[match_player_indices[0]]\
+                   + tau * jnp.sqrt(match_time - player_times[match_player_indices[0]]) * random.normal(prop_key_p1)
+        skill_p2 = player_skills[match_player_indices[1]]\
+                   + tau * jnp.sqrt(match_time - player_times[match_player_indices[1]]) * random.normal(prop_key_p2)
+
+        z = skill_p1 - skill_p2
+
+        pz_smaller_than_epsilon = norm.cdf((epsilon - z) / s)
+        pz_smaller_than_minus_epsilon = norm.cdf((-epsilon - z) / s)
+
+        pdraw = pz_smaller_than_epsilon - pz_smaller_than_minus_epsilon
+        p_vp1 = 1 - pz_smaller_than_epsilon
+        p_vp2 = pz_smaller_than_minus_epsilon
+
+        ps = jnp.array([pdraw, p_vp1, p_vp2])
+
+        result = random.choice(match_key, a=jnp.arange(3), p=ps)
+
+        new_player_times = player_times.at[match_player_indices].set(match_time)
+        new_player_skills = player_skills.at[match_player_indices[0]].set(skill_p1)
+        new_player_skills = new_player_skills.at[match_player_indices[1]].set(skill_p2)
+
+        return (new_player_times, new_player_skills, int_random_key), \
+               (skill_p1, skill_p2, result)
+
+    _, out_stack = scan(scan_body,
+                        (init_player_times, init_player_skills, random_key),
+                        jnp.arange(len(match_times)))
+
+    out_skills_ind0, out_skills_ind1, results = out_stack
+
+    return out_skills_ind0, out_skills_ind1, results

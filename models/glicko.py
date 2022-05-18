@@ -22,7 +22,7 @@ def propagate(skills: jnp.ndarray,
     skills = jnp.atleast_2d(skills)
     new_var = skills[:, -1] + tau * jnp.sqrt(time_interval)
     new_var = jnp.where(new_var > max_var, max_var, new_var)
-    return skills.at[:, -1].set(new_var)
+    return jnp.squeeze(skills.at[:, -1].set(new_var))
 
 
 def update(skill_p1: jnp.ndarray,
