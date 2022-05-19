@@ -121,7 +121,7 @@ def smoother(filter_skill_t: jnp.ndarray,
              smooth_skill_tplus1: jnp.ndarray,
              time_plus1: float,
              tau: float,
-             _: Any) -> jnp.ndarray:
+             _: Any) -> Tuple[jnp.ndarray, float]:
     filter_t_mu, filter_t_var = filter_skill_t
     smooth_tp1_mu, smooth_tp1_var = smooth_skill_tplus1
     propagate_var = (time_plus1 - time) * tau ** 2
@@ -129,7 +129,10 @@ def smoother(filter_skill_t: jnp.ndarray,
     kalman_gain = filter_t_var / (filter_t_var + propagate_var)
     smooth_t_mu = filter_t_mu + kalman_gain * (smooth_tp1_mu - filter_t_mu)
     smooth_t_var = filter_t_var + kalman_gain * (smooth_tp1_var - filter_t_var - propagate_var) * kalman_gain
-    return jnp.array([smooth_t_mu, smooth_t_var])
+
+    e_xt_xtp1 = smooth_tp1_mu + kalman_gain * (smooth_tp1_var + (smooth_tp1_mu - filter_t_mu) * smooth_tp1_mu)
+    cov_xt_xtp1 = e_xt_xtp1 - smooth_t_mu * smooth_tp1_mu
+    return jnp.array([smooth_t_mu, smooth_t_var]), cov_xt_xtp1
 
 
 def simulate(init_player_times: jnp.ndarray,

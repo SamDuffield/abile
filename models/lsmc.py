@@ -68,7 +68,8 @@ def smoother(filter_skill_t: jnp.ndarray,
              smooth_skill_tplus1: jnp.ndarray,
              time_plus1: float,
              tau: float,
-             random_key: jnp.ndarray) -> jnp.ndarray:
+             random_key: jnp.ndarray) -> Tuple[jnp.ndarray, None]:
     rks = random.split(random_key, len(filter_skill_t))
     return vmap(smooth_single_sample,
-                in_axes=(None, None, 0, None, None, 0))(filter_skill_t, time, smooth_skill_tplus1, time_plus1, tau, rks)
+                in_axes=(None, None, 0, None, None, 0))(filter_skill_t, time, smooth_skill_tplus1, time_plus1, tau, rks),\
+        None
