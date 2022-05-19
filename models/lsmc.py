@@ -1,6 +1,6 @@
 from typing import Tuple
 
-from jax import numpy as jnp, random
+from jax import numpy as jnp, random, vmap
 from jax.scipy.stats import norm
 
 from filtering import get_random_filter
@@ -50,3 +50,25 @@ def update(skill_p1: jnp.ndarray,
 
 
 filter = get_random_filter(propagate, update)
+
+
+def smooth_single_sample(filter_skill_t: jnp.ndarray,
+                         time: float,
+                         smooth_skill_tplus1_single: jnp.ndarray,
+                         time_plus1: float,
+                         tau: float,
+                         random_key: jnp.ndarray) -> jnp.ndarray:
+    log_samp_probs = - jnp.square(filter_skill_t - smooth_skill_tplus1_single) / ((time_plus1 - time) * tau ** 2)
+    samp_ind = random.categorical(random_key, log_samp_probs)
+    return filter_skill_t[samp_ind]
+
+
+def smoother(filter_skill_t: jnp.ndarray,
+             time: float,
+             smooth_skill_tplus1: jnp.ndarray,
+             time_plus1: float,
+             tau: float,
+             random_key: jnp.ndarray) -> jnp.ndarray:
+    rks = random.split(random_key, len(filter_skill_t))
+    return vmap(smooth_single_sample,
+                in_axes=(None, None, 0, None, None, 0))(filter_skill_t, time, smooth_skill_tplus1, time_plus1, tau, rks)

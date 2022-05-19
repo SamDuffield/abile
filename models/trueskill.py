@@ -116,6 +116,22 @@ def update(skill_p1: jnp.ndarray,
 filter = get_basic_filter(propagate, update)
 
 
+def smoother(filter_skill_t: jnp.ndarray,
+             time: float,
+             smooth_skill_tplus1: jnp.ndarray,
+             time_plus1: float,
+             tau: float,
+             _: Any) -> jnp.ndarray:
+    filter_t_mu, filter_t_var = filter_skill_t
+    smooth_tp1_mu, smooth_tp1_var = smooth_skill_tplus1
+    propagate_var = (time_plus1 - time) * tau ** 2
+
+    kalman_gain = filter_t_var / (filter_t_var + propagate_var)
+    smooth_t_mu = filter_t_mu + kalman_gain * (smooth_tp1_mu - filter_t_mu)
+    smooth_t_var = filter_t_var + kalman_gain * (smooth_tp1_var - filter_t_var - propagate_var) * kalman_gain
+    return jnp.array([smooth_t_mu, smooth_t_var])
+
+
 def simulate(init_player_times: jnp.ndarray,
              init_player_skills: jnp.ndarray,
              match_times: jnp.ndarray,
@@ -123,7 +139,6 @@ def simulate(init_player_times: jnp.ndarray,
              tau: float,
              s_and_epsilon: Union[jnp.ndarray, Sequence],
              random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-
     s, epsilon = s_and_epsilon
 
     def scan_body(carry,
@@ -136,9 +151,9 @@ def simulate(init_player_times: jnp.ndarray,
         match_time = match_times[match_ind]
         match_player_indices = match_player_indices_seq[match_ind]
 
-        skill_p1 = player_skills[match_player_indices[0]]\
+        skill_p1 = player_skills[match_player_indices[0]] \
                    + tau * jnp.sqrt(match_time - player_times[match_player_indices[0]]) * random.normal(prop_key_p1)
-        skill_p2 = player_skills[match_player_indices[1]]\
+        skill_p2 = player_skills[match_player_indices[1]] \
                    + tau * jnp.sqrt(match_time - player_times[match_player_indices[1]]) * random.normal(prop_key_p2)
 
         z = skill_p1 - skill_p2
