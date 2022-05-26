@@ -1,11 +1,15 @@
-from typing import Tuple, Any, Union, Sequence
+from typing import Tuple, Any, Union, Sequence, Callable
+from functools import partial
 
 from jax import numpy as jnp, random
 from jax.scipy.stats import norm
 from jax.lax import scan
+from jax.scipy.optimize import minimize
+
+from numpy.polynomial.hermite import hermgauss
 
 from filtering import get_basic_filter
-
+from smoothing import times_and_skills_by_player_to_by_match
 
 # skills.shape = (number of players, 2)         1 row for skill mean, 1 row for skill variance
 # match_result in (0 for draw, 1 for p1 victory, 2 for p2 victory)
@@ -14,6 +18,16 @@ from filtering import get_basic_filter
 # static_update_params = (s, epsilon)
 #       s = standard deviation of performance
 #       epsilon = draw margin
+
+init_time: float = 0.
+gauss_hermite_degree: int = 20
+
+
+def initiator(num_players: int,
+              init_means_and_vars: jnp.ndarray,
+              _: Any = None) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    return jnp.zeros(num_players), init_means_and_vars * jnp.ones((num_players, 2))
+
 
 def propagate(skills: jnp.ndarray,
               time_interval: float,
@@ -99,10 +113,9 @@ def update(skill_p1: jnp.ndarray,
                         skills_vp2])[match_result]
 
     z_mean = skill_p1[0] - skill_p2[0]
-    z_sd = jnp.sqrt(1 + s ** 2)
 
-    pz_smaller_than_epsilon = norm.cdf((epsilon - z_mean) / z_sd)
-    pz_smaller_than_minus_epsilon = norm.cdf((-epsilon - z_mean) / z_sd)
+    pz_smaller_than_epsilon = norm.cdf((epsilon - z_mean) / s)
+    pz_smaller_than_minus_epsilon = norm.cdf((-epsilon - z_mean) / s)
 
     pdraw = pz_smaller_than_epsilon - pz_smaller_than_minus_epsilon
     p_vp1 = 1 - pz_smaller_than_epsilon
@@ -131,8 +144,113 @@ def smoother(filter_skill_t: jnp.ndarray,
     smooth_t_var = filter_t_var + kalman_gain * (smooth_tp1_var - filter_t_var - propagate_var) * kalman_gain
 
     e_xt_xtp1 = smooth_tp1_mu + kalman_gain * (smooth_tp1_var + (smooth_tp1_mu - filter_t_mu) * smooth_tp1_mu)
-    cov_xt_xtp1 = e_xt_xtp1 - smooth_t_mu * smooth_tp1_mu
-    return jnp.array([smooth_t_mu, smooth_t_var]), cov_xt_xtp1
+    return jnp.array([smooth_t_mu, smooth_t_var]), e_xt_xtp1
+
+
+def get_sum_t1_diffs_single(times: jnp.ndarray,
+                            smoother_skills_and_extra: Tuple[jnp.ndarray, jnp.ndarray]) -> Tuple[int, float]:
+    smoother_skills, lag1_es = smoother_skills_and_extra
+    time_diff = times[1:] - times[:-1]
+
+    smoother_means = smoother_skills[:, 0]
+    smoother_vars = smoother_skills[:, 1]
+
+    smoother_diff_div_time_diff = (smoother_vars[:-1] + smoother_means[:-1] ** 2
+                                   - 2 * lag1_es
+                                   + smoother_vars[1:] + smoother_means[1:] ** 2) / time_diff[..., jnp.newaxis]
+
+    return (~jnp.isnan(smoother_diff_div_time_diff)).sum(), \
+           jnp.where(jnp.isnan(smoother_diff_div_time_diff), 0, smoother_diff_div_time_diff).sum()
+
+
+def gauss_hermite_integration(mean: jnp.ndarray,
+                              sd: jnp.ndarray,
+                              integrand: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray],
+                              extra_params: jnp.ndarray,
+                              degree: int) -> jnp.ndarray:
+    """
+    Gauss-Hermite integration over 1-D Gaussian(s).
+    https://en.wikipedia.org/wiki/Gauss-Hermite_quadrature
+    \int integrand(x, extra_params) N(x | m, s**2) dx.
+    Args:
+        mean: Array of n means each corresponding to a 1-D Gaussian (n,).
+        sd: Array of n standard deviations each corresponding to a 1-D Gaussian (n,).
+        integrand: Function to be integrated over.
+        extra_params: Extra params to integrand function.
+        degree: Integer number of Gauss-Hermite points.
+    Returns:
+        out: Array of n approximate 1D Gaussian expectations.
+    """
+    n = mean.size
+    x, w = hermgauss(degree)
+    w = w[..., jnp.newaxis]  # extend shape to (degree, 1)
+    x = jnp.repeat(x[..., jnp.newaxis], n, axis=1)  # extend shape to (degree, n)
+    x = jnp.sqrt(2) * sd * x + mean
+    hx = integrand(x, extra_params)
+    return (w * hx).sum(0) / jnp.sqrt(jnp.pi)
+
+
+def log_draw_prob(z, s_eps):
+    prob = norm.cdf((z + s_eps[1]) / s_eps[0]) - norm.cdf((z - s_eps[1]) / s_eps[0])
+    prob = jnp.where(prob < 1e-10, 1e-10, prob)
+    return jnp.log(prob)
+
+
+def log_vp1_prob(z, s_eps):
+    prob = norm.cdf((z - s_eps[1]) / s_eps[0])
+    prob = jnp.where(prob < 1e-10, 1e-10, prob)
+    return jnp.log(prob)
+
+
+def log_vp2_prob(z, s_eps):
+    prob = 1 - norm.cdf((z + s_eps[1]) / s_eps[0])
+    prob = jnp.where(prob < 1e-10, 1e-10, prob)
+    return jnp.log(prob)
+
+
+def maximiser(times_by_player: Sequence,
+              smoother_skills_and_extras_by_player: Sequence,
+              match_player_indices_seq: jnp.ndarray,
+              match_results: jnp.ndarray,
+              initial_params: jnp.ndarray,
+              propagate_params: jnp.ndarray,
+              update_params: jnp.ndarray,
+              i: int,
+              random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player])
+    max_init_mean = init_smoothing_skills[:, 0].mean()
+    max_init_var = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
+                    - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).mean()
+    maxed_initial_params = jnp.array([max_init_mean, max_init_var])
+
+    num_diff_terms_and_diff_sums = jnp.array([get_sum_t1_diffs_single(t, se)
+                                              for t, se in zip(times_by_player, smoother_skills_and_extras_by_player)])
+    maxed_tau = jnp.sqrt(num_diff_terms_and_diff_sums[:, 1].sum() / num_diff_terms_and_diff_sums[:, 0].sum())
+
+    smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player]
+    match_times, match_skills_p1, match_skills_p2 = times_and_skills_by_player_to_by_match(times_by_player,
+                                                                                           smoother_skills_by_player,
+                                                                                           match_player_indices_seq)
+
+    def negative_expected_log_obs_dens(log_s_and_epsilon: jnp.ndarray) -> float:
+        s_and_epsilon = jnp.exp(log_s_and_epsilon)
+
+        ghint = partial(gauss_hermite_integration,
+                        mean=match_skills_p1[:, 0] - match_skills_p2[:, 0],
+                        sd=jnp.sqrt(match_skills_p1[:, 1] + match_skills_p2[:, 1]),
+                        extra_params=s_and_epsilon,
+                        degree=gauss_hermite_degree)
+
+        elogp_draw = ghint(integrand=log_draw_prob)
+        elogp_vp1 = ghint(integrand=log_vp1_prob)
+        elogp_vp2 = ghint(integrand=log_vp2_prob)
+        elogp_all = jnp.array([elogp_draw, elogp_vp1, elogp_vp2])
+        elogp = jnp.array([e[m] for e, m in zip(elogp_all, match_results)])
+        return - elogp.mean()
+
+    maxed_s_and_epsilon = jnp.exp(minimize(negative_expected_log_obs_dens, jnp.log(update_params), method='BFGS').x)
+
+    return maxed_initial_params, maxed_tau, maxed_s_and_epsilon
 
 
 def simulate(init_player_times: jnp.ndarray,
