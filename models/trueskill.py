@@ -4,7 +4,8 @@ from functools import partial
 from jax import numpy as jnp, random
 from jax.scipy.stats import norm
 from jax.lax import scan
-from jax.scipy.optimize import minimize
+# from jax.scipy.optimize import minimize
+from scipy.optimize import minimize
 
 from numpy.polynomial.hermite import hermgauss
 
@@ -73,7 +74,7 @@ def v_tilde(t: float, alpha: float) -> float:
 def w_tilde(t: float, alpha: float) -> float:
     d = alpha - t
     s = alpha + t
-    return (d * norm.pdf(d) - s * norm.pdf(s)) / (norm.cdf(d) - norm.cdf(-s))
+    return v_tilde(t, alpha) ** 2 + (d * norm.pdf(d) + s * norm.pdf(s)) / (norm.cdf(d) - norm.cdf(-s))
 
 
 def update_draw(skill_p1: jnp.ndarray,
@@ -91,6 +92,7 @@ def update_draw(skill_p1: jnp.ndarray,
 
     new_var_p1 = var_p1 * (1 - var_p1 / c2 * w_tilde((mu_p1 - mu_p2) / c, epsilon / c))
     new_var_p2 = var_p2 * (1 - var_p2 / c2 * w_tilde((mu_p2 - mu_p1) / c, epsilon / c))
+
     return jnp.array([new_mu_p1, new_var_p1]), jnp.array([new_mu_p2, new_var_p2])
 
 
@@ -99,7 +101,7 @@ def update(skill_p1: jnp.ndarray,
            match_result: int,
            s_and_epsilon: jnp.ndarray,
            _: Any) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    # see TrueSkill through Time for equations
+    # see TrueSkill through Time for equations (with errors in v_tilde and w_tilde)
     # https://www.microsoft.com/en-us/research/wp-content/uploads/2008/01/NIPS2007_0931.pdf
     s, epsilon = s_and_epsilon
 
@@ -112,14 +114,14 @@ def update(skill_p1: jnp.ndarray,
                         skills_vp1,
                         skills_vp2])[match_result]
 
-    z_mean = skill_p1[0] - skill_p2[0]
+    z = skill_p1[0] - skill_p2[0]
 
-    pz_smaller_than_epsilon = norm.cdf((epsilon - z_mean) / s)
-    pz_smaller_than_minus_epsilon = norm.cdf((-epsilon - z_mean) / s)
+    pz_smaller_than_epsilon = norm.cdf((z + epsilon) / s)
+    pz_smaller_than_minus_epsilon = norm.cdf((z - epsilon) / s)
 
     pdraw = pz_smaller_than_epsilon - pz_smaller_than_minus_epsilon
-    p_vp1 = 1 - pz_smaller_than_epsilon
-    p_vp2 = pz_smaller_than_minus_epsilon
+    p_vp1 = pz_smaller_than_minus_epsilon
+    p_vp2 = 1 - pz_smaller_than_epsilon
 
     predict_probs = jnp.array([pdraw, p_vp1, p_vp2])
 
@@ -143,7 +145,8 @@ def smoother(filter_skill_t: jnp.ndarray,
     smooth_t_mu = filter_t_mu + kalman_gain * (smooth_tp1_mu - filter_t_mu)
     smooth_t_var = filter_t_var + kalman_gain * (smooth_tp1_var - filter_t_var - propagate_var) * kalman_gain
 
-    e_xt_xtp1 = smooth_tp1_mu + kalman_gain * (smooth_tp1_var + (smooth_tp1_mu - filter_t_mu) * smooth_tp1_mu)
+    e_xt_xtp1 = filter_t_mu * smooth_tp1_mu \
+                + kalman_gain * (smooth_tp1_var + (smooth_tp1_mu - filter_t_mu) * smooth_tp1_mu)
     return jnp.array([smooth_t_mu, smooth_t_var]), e_xt_xtp1
 
 
@@ -157,7 +160,7 @@ def get_sum_t1_diffs_single(times: jnp.ndarray,
 
     smoother_diff_div_time_diff = (smoother_vars[:-1] + smoother_means[:-1] ** 2
                                    - 2 * lag1_es
-                                   + smoother_vars[1:] + smoother_means[1:] ** 2) / time_diff[..., jnp.newaxis]
+                                   + smoother_vars[1:] + smoother_means[1:] ** 2) / time_diff
 
     return (~jnp.isnan(smoother_diff_div_time_diff)).sum(), \
            jnp.where(jnp.isnan(smoother_diff_div_time_diff), 0, smoother_diff_div_time_diff).sum()
@@ -192,20 +195,42 @@ def gauss_hermite_integration(mean: jnp.ndarray,
 
 def log_draw_prob(z, s_eps):
     prob = norm.cdf((z + s_eps[1]) / s_eps[0]) - norm.cdf((z - s_eps[1]) / s_eps[0])
-    prob = jnp.where(prob < 1e-10, 1e-10, prob)
+    prob = jnp.where(prob < 1e-20, 1e-20, prob)
     return jnp.log(prob)
 
 
 def log_vp1_prob(z, s_eps):
     prob = norm.cdf((z - s_eps[1]) / s_eps[0])
-    prob = jnp.where(prob < 1e-10, 1e-10, prob)
+    prob = jnp.where(prob < 1e-20, 1e-20, prob)
     return jnp.log(prob)
 
 
 def log_vp2_prob(z, s_eps):
     prob = 1 - norm.cdf((z + s_eps[1]) / s_eps[0])
-    prob = jnp.where(prob < 1e-10, 1e-10, prob)
+    prob = jnp.where(prob < 1e-20, 1e-20, prob)
     return jnp.log(prob)
+
+
+def maximiser_no_draw(times_by_player: Sequence,
+                      smoother_skills_and_extras_by_player: Sequence,
+                      match_player_indices_seq: jnp.ndarray,
+                      match_results: jnp.ndarray,
+                      initial_params: jnp.ndarray,
+                      propagate_params: jnp.ndarray,
+                      update_params: jnp.ndarray,
+                      i: int,
+                      random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player])
+    max_init_mean = initial_params[0]
+    max_init_var = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
+                    - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).mean()
+    maxed_initial_params = jnp.array([max_init_mean, max_init_var])
+
+    num_diff_terms_and_diff_sums = jnp.array([get_sum_t1_diffs_single(t, se)
+                                              for t, se in zip(times_by_player, smoother_skills_and_extras_by_player)])
+    maxed_tau = jnp.sqrt(num_diff_terms_and_diff_sums[:, 1].sum() / num_diff_terms_and_diff_sums[:, 0].sum())
+
+    return maxed_initial_params, maxed_tau, update_params
 
 
 def maximiser(times_by_player: Sequence,
@@ -217,23 +242,17 @@ def maximiser(times_by_player: Sequence,
               update_params: jnp.ndarray,
               i: int,
               random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player])
-    max_init_mean = init_smoothing_skills[:, 0].mean()
-    max_init_var = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
-                    - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).mean()
-    maxed_initial_params = jnp.array([max_init_mean, max_init_var])
-
-    num_diff_terms_and_diff_sums = jnp.array([get_sum_t1_diffs_single(t, se)
-                                              for t, se in zip(times_by_player, smoother_skills_and_extras_by_player)])
-    maxed_tau = jnp.sqrt(num_diff_terms_and_diff_sums[:, 1].sum() / num_diff_terms_and_diff_sums[:, 0].sum())
+    maxed_initial_params, maxed_tau, _ = maximiser_no_draw(times_by_player, smoother_skills_and_extras_by_player,
+                                                           match_player_indices_seq, match_results, initial_params,
+                                                           propagate_params, update_params, i, random_key)
 
     smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player]
     match_times, match_skills_p1, match_skills_p2 = times_and_skills_by_player_to_by_match(times_by_player,
                                                                                            smoother_skills_by_player,
                                                                                            match_player_indices_seq)
 
-    def negative_expected_log_obs_dens(log_s_and_epsilon: jnp.ndarray) -> float:
-        s_and_epsilon = jnp.exp(log_s_and_epsilon)
+    def negative_expected_log_obs_dens(log_epsilon: jnp.ndarray) -> float:
+        s_and_epsilon = update_params.at[1].set(jnp.exp(log_epsilon[0]))
 
         ghint = partial(gauss_hermite_integration,
                         mean=match_skills_p1[:, 0] - match_skills_p2[:, 0],
@@ -248,7 +267,11 @@ def maximiser(times_by_player: Sequence,
         elogp = jnp.array([e[m] for e, m in zip(elogp_all, match_results)])
         return - elogp.mean()
 
-    maxed_s_and_epsilon = jnp.exp(minimize(negative_expected_log_obs_dens, jnp.log(update_params), method='BFGS').x)
+    optim_result = minimize(negative_expected_log_obs_dens, jnp.log(update_params[-1:]), method='nelder-mead')
+
+    assert optim_result.success, 'epsilon optimisation failed'
+    maxed_epsilon = jnp.exp(optim_result.x)[0]
+    maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
 
     return maxed_initial_params, maxed_tau, maxed_s_and_epsilon
 
@@ -279,12 +302,12 @@ def simulate(init_player_times: jnp.ndarray,
 
         z = skill_p1 - skill_p2
 
-        pz_smaller_than_epsilon = norm.cdf((epsilon - z) / s)
-        pz_smaller_than_minus_epsilon = norm.cdf((-epsilon - z) / s)
+        pz_smaller_than_epsilon = norm.cdf((z + epsilon) / s)
+        pz_smaller_than_minus_epsilon = norm.cdf((z - epsilon) / s)
 
         pdraw = pz_smaller_than_epsilon - pz_smaller_than_minus_epsilon
-        p_vp1 = 1 - pz_smaller_than_epsilon
-        p_vp2 = pz_smaller_than_minus_epsilon
+        p_vp1 = pz_smaller_than_minus_epsilon
+        p_vp2 = 1 - pz_smaller_than_epsilon
 
         ps = jnp.array([pdraw, p_vp1, p_vp2])
 

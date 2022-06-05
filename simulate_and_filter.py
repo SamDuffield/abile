@@ -1,5 +1,5 @@
 from functools import partial
-from jax import numpy as jnp, random
+from jax import numpy as jnp, random, vmap
 import matplotlib.pyplot as plt
 
 import models
@@ -19,7 +19,8 @@ epsilon = 1.
 mt_key, mi_key, init_skill_key, sim_key, filter_key, init_particle_key = random.split(rk, 6)
 
 match_times = random.uniform(mt_key, shape=(n_matches,)).sort()
-match_indices_seq = random.choice(mi_key, a=jnp.arange(n_players, ), shape=(n_matches, 2))
+mi_keys = random.split(mi_key, n_matches)
+match_indices_seq = vmap(lambda rk: random.choice(rk, a=jnp.arange(n_players, ), shape=(2,), replace=False))(mi_keys)
 
 init_player_times = jnp.zeros(n_players)
 init_player_skills = init_mean + init_sd * random.normal(init_skill_key, shape=(n_players,))
