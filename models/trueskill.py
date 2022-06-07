@@ -19,15 +19,23 @@ from smoothing import times_and_skills_by_player_to_by_match
 # static_update_params = (s, epsilon)
 #       s = standard deviation of performance
 #       epsilon = draw margin
+# Gamma priors on init_var^-1, tau^-2 and epsilon
 
-init_time: float = 0.
+init_time: Union[float, jnp.ndarray] = 0.
 gauss_hermite_degree: int = 20
+
+init_var_inv_prior_alpha: float = 1.
+init_var_inv_prior_beta: float = 0.
+tau2_inv_prior_alpha: float = 1.
+tau2_inv_prior_beta: float = 0.
+epsilon_prior_alpha: float = 1.
+epsilon_prior_beta: float = 0.
 
 
 def initiator(num_players: int,
               init_means_and_vars: jnp.ndarray,
               _: Any = None) -> Tuple[jnp.ndarray, jnp.ndarray]:
-    return jnp.zeros(num_players), init_means_and_vars * jnp.ones((num_players, 2))
+    return jnp.zeros(num_players) + init_time, init_means_and_vars * jnp.ones((num_players, 2))
 
 
 def propagate(skills: jnp.ndarray,
@@ -222,13 +230,18 @@ def maximiser_no_draw(times_by_player: Sequence,
                       random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player])
     max_init_mean = initial_params[0]
-    max_init_var = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
-                    - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).mean()
+    init_var_num = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
+                       - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).sum() + 2 * init_var_inv_prior_beta
+    init_var_denom = len(init_smoothing_skills) + 2 * (init_var_inv_prior_alpha - 1)
+    max_init_var = init_var_num / init_var_denom
+    # max_init_var = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
+    #                 - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).mean()
     maxed_initial_params = jnp.array([max_init_mean, max_init_var])
 
     num_diff_terms_and_diff_sums = jnp.array([get_sum_t1_diffs_single(t, se)
                                               for t, se in zip(times_by_player, smoother_skills_and_extras_by_player)])
-    maxed_tau = jnp.sqrt(num_diff_terms_and_diff_sums[:, 1].sum() / num_diff_terms_and_diff_sums[:, 0].sum())
+    maxed_tau = jnp.sqrt((num_diff_terms_and_diff_sums[:, 1].sum() +  2 * tau2_inv_prior_beta)
+                         / (num_diff_terms_and_diff_sums[:, 0].sum() + 2 * (tau2_inv_prior_alpha - 1)))
 
     return maxed_initial_params, maxed_tau, update_params
 
@@ -264,10 +277,11 @@ def maximiser(times_by_player: Sequence,
         elogp_vp1 = ghint(integrand=log_vp1_prob)
         elogp_vp2 = ghint(integrand=log_vp2_prob)
         elogp_all = jnp.array([elogp_draw, elogp_vp1, elogp_vp2])
-        elogp = jnp.array([e[m] for e, m in zip(elogp_all, match_results)])
-        return - elogp.mean()
+        elogp = jnp.array([e[m] for e, m in zip(elogp_all.T, match_results)])
+        return - (elogp.mean() + ((epsilon_prior_alpha - 1) * log_epsilon[0]
+                  - epsilon_prior_beta * jnp.exp(log_epsilon[0])) / len(match_results))
 
-    optim_result = minimize(negative_expected_log_obs_dens, jnp.log(update_params[-1:]), method='nelder-mead')
+    optim_result = minimize(negative_expected_log_obs_dens, jnp.log(update_params[-1:]), method='cobyla')
 
     assert optim_result.success, 'epsilon optimisation failed'
     maxed_epsilon = jnp.exp(optim_result.x)[0]

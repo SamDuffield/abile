@@ -7,14 +7,15 @@ from smoothing import smoother_sweep, times_and_skills_by_match_to_by_player
 
 rk = random.PRNGKey(0)
 
-n_players = 100
-n_matches = 5000
+n_players = 50
+n_matches = 1000
 
 init_mean = 0.
 init_var = 3.
-tau = 1.
+tau = 0.5
 s = 1.
-epsilon = 10.
+epsilon = 2.
+
 
 mt_key, mi_key, init_skill_key, sim_key, filter_key, init_particle_key = random.split(rk, 6)
 

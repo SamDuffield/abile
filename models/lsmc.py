@@ -1,4 +1,4 @@
-from typing import Tuple, Sequence
+from typing import Tuple, Sequence, Union
 
 from jax import numpy as jnp, random, vmap
 from jax.scipy.stats import norm
@@ -15,9 +15,17 @@ from smoothing import times_and_skills_by_player_to_by_match
 # static_update_params = (s, epsilon)
 #       s = standard deviation of performance
 #       epsilon = draw margin
+# Gamma priors on init_var^-1, tau^-2 and epsilon
 
-init_time: float = 0.
+init_time: Union[float, jnp.ndarray] = 0.
 n_particles: int
+
+init_var_inv_prior_alpha: float = 1.
+init_var_inv_prior_beta: float = 0.
+tau2_inv_prior_alpha: float = 1.
+tau2_inv_prior_beta: float = 0.
+epsilon_prior_alpha: float = 1.
+epsilon_prior_beta: float = 0.
 
 
 def initiator(num_players: int,
@@ -68,7 +76,7 @@ def smooth_single_sample(filter_skill_t: jnp.ndarray,
                          time_plus1: float,
                          tau: float,
                          random_key: jnp.ndarray) -> jnp.ndarray:
-    log_samp_probs = - jnp.square(smooth_skill_tplus1_single - filter_skill_t) / ((time_plus1 - time) * (tau ** 2))
+    log_samp_probs = - jnp.square(smooth_skill_tplus1_single - filter_skill_t) / (2 * (time_plus1 - time) * (tau ** 2))
     samp_ind = random.categorical(random_key, log_samp_probs)
     return filter_skill_t[samp_ind]
 
@@ -103,14 +111,18 @@ def maximiser_no_draw(times_by_player: Sequence,
                       i: int,
                       random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player])
-    maxed_init_var = jnp.square(init_smoothing_skills - initial_params[0]).mean()
-    maxed_initial_params = initial_params.at[1].set(maxed_init_var)
+
+    init_var_num = (jnp.square(init_smoothing_skills - initial_params[0]) / n_particles).sum() + 2 * init_var_inv_prior_beta
+    init_var_denom = len(init_smoothing_skills) + 2 * (init_var_inv_prior_alpha - 1)
+    max_init_var = init_var_num / init_var_denom
+    maxed_initial_params = initial_params.at[1].set(max_init_var)
 
     smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player]
 
     num_diff_terms_and_diff_sums = jnp.array([get_sum_t1_diffs_single(t, s)
                                               for t, s in zip(times_by_player, smoother_skills_by_player)])
-    maxed_tau = jnp.sqrt(num_diff_terms_and_diff_sums[:, 1].sum() / num_diff_terms_and_diff_sums[:, 0].sum())
+    maxed_tau = jnp.sqrt(((num_diff_terms_and_diff_sums[:, 1].sum() + 2 * n_particles * tau2_inv_prior_beta)
+                          / (num_diff_terms_and_diff_sums[:, 0].sum() + 2 * n_particles * (tau2_inv_prior_alpha - 1))))
 
     return maxed_initial_params, maxed_tau, update_params
 
@@ -143,9 +155,11 @@ def maximiser(times_by_player: Sequence,
             all_probs = jnp.where(all_probs < 1e-20, 1e-20, all_probs)
             return jnp.log(all_probs).mean()
 
-        return -vmap(p_y_given_x)(match_skills_p1, match_skills_p2, match_results).mean()
+        return -((vmap(p_y_given_x)(match_skills_p1, match_skills_p2, match_results)).mean()\
+               + ((epsilon_prior_alpha - 1) * log_epsilon[0]
+                  - epsilon_prior_beta * jnp.exp(log_epsilon[0])) / len(match_results))
 
-    optim_res = minimize(negative_expected_log_obs_dens, jnp.log(update_params[-1:]), method='nelder-mead')
+    optim_res = minimize(negative_expected_log_obs_dens, jnp.log(update_params[-1:]), method='cobyla')
 
     assert optim_res.success, 'epsilon optimisation failed'
     maxed_epsilon = jnp.exp(optim_res.x)[0]
