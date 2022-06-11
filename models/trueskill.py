@@ -170,8 +170,9 @@ def get_sum_t1_diffs_single(times: jnp.ndarray,
                                    - 2 * lag1_es
                                    + smoother_vars[1:] + smoother_means[1:] ** 2) / time_diff
 
-    return (~jnp.isnan(smoother_diff_div_time_diff)).sum(), \
-           jnp.where(jnp.isnan(smoother_diff_div_time_diff), 0, smoother_diff_div_time_diff).sum()
+    bad_inds = time_diff < 1e-20
+
+    return (~bad_inds).sum(), jnp.where(bad_inds, 0, smoother_diff_div_time_diff).sum()
 
 
 def gauss_hermite_integration(mean: jnp.ndarray,
@@ -228,7 +229,9 @@ def maximiser_no_draw(times_by_player: Sequence,
                       update_params: jnp.ndarray,
                       i: int,
                       random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player])
+    times_by_player_clean = [t for t in times_by_player if len(t) > 1]
+    smoother_skills_and_extras_by_player_clean = [p for p in smoother_skills_and_extras_by_player if len(p[0]) > 1]
+    init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player_clean])
     max_init_mean = initial_params[0]
     init_var_num = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
                        - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).sum() + 2 * init_var_inv_prior_beta
@@ -239,8 +242,8 @@ def maximiser_no_draw(times_by_player: Sequence,
     maxed_initial_params = jnp.array([max_init_mean, max_init_var])
 
     num_diff_terms_and_diff_sums = jnp.array([get_sum_t1_diffs_single(t, se)
-                                              for t, se in zip(times_by_player, smoother_skills_and_extras_by_player)])
-    maxed_tau = jnp.sqrt((num_diff_terms_and_diff_sums[:, 1].sum() +  2 * tau2_inv_prior_beta)
+                                              for t, se in zip(times_by_player_clean, smoother_skills_and_extras_by_player_clean)])
+    maxed_tau = jnp.sqrt((num_diff_terms_and_diff_sums[:, 1].sum() + 2 * tau2_inv_prior_beta)
                          / (num_diff_terms_and_diff_sums[:, 0].sum() + 2 * (tau2_inv_prior_alpha - 1)))
 
     return maxed_initial_params, maxed_tau, update_params

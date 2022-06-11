@@ -65,7 +65,7 @@ em_init_s_and_epsilon = jnp.array([s, epsilon / 2])
 # em_init_s_and_epsilon = jnp.array([s, epsilon])
 
 
-n_em_steps = 20
+n_em_steps = 10
 
 # TrueSkill (EP)
 initial_params_ep, propagate_params_ep, update_params_ep = expectation_maximisation(models.trueskill.initiator,
@@ -116,4 +116,3 @@ axes[2].set_ylabel(r'$\epsilon$')
 axes[2].set_xlabel('EM iteration')
 
 fig.tight_layout()
-fig.savefig('/Users/samddd/Desktop/trueskill_em', dpi=300)

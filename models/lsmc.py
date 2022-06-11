@@ -96,9 +96,9 @@ def get_sum_t1_diffs_single(times: jnp.ndarray,
                             smoother_skills: jnp.ndarray) -> Tuple[int, float]:
     time_diff = times[1:] - times[:-1]
     smoother_diff2_div_time_diff = jnp.square(smoother_skills[1:] - smoother_skills[:-1]) / time_diff[..., jnp.newaxis]
+    bad_inds = jnp.logical_or((smoother_diff2_div_time_diff < 1e-20), jnp.isnan(smoother_diff2_div_time_diff))
 
-    return (~jnp.isnan(smoother_diff2_div_time_diff)).sum(), \
-           jnp.where(jnp.isnan(smoother_diff2_div_time_diff), 0, smoother_diff2_div_time_diff).sum()
+    return (~bad_inds).sum(), jnp.where(bad_inds, 0, smoother_diff2_div_time_diff).sum()
 
 
 def maximiser_no_draw(times_by_player: Sequence,
@@ -110,17 +110,19 @@ def maximiser_no_draw(times_by_player: Sequence,
                       update_params: jnp.ndarray,
                       i: int,
                       random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player])
+    times_by_player_clean = [t for t in times_by_player if len(t) > 1]
+    smoother_skills_and_extras_by_player_clean = [p for p in smoother_skills_and_extras_by_player if len(p[0]) > 1]
+    init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player_clean])
 
     init_var_num = (jnp.square(init_smoothing_skills - initial_params[0]) / n_particles).sum() + 2 * init_var_inv_prior_beta
     init_var_denom = len(init_smoothing_skills) + 2 * (init_var_inv_prior_alpha - 1)
     max_init_var = init_var_num / init_var_denom
     maxed_initial_params = initial_params.at[1].set(max_init_var)
 
-    smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player]
+    smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player_clean]
 
     num_diff_terms_and_diff_sums = jnp.array([get_sum_t1_diffs_single(t, s)
-                                              for t, s in zip(times_by_player, smoother_skills_by_player)])
+                                              for t, s in zip(times_by_player_clean, smoother_skills_by_player)])
     maxed_tau = jnp.sqrt(((num_diff_terms_and_diff_sums[:, 1].sum() + 2 * n_particles * tau2_inv_prior_beta)
                           / (num_diff_terms_and_diff_sums[:, 0].sum() + 2 * n_particles * (tau2_inv_prior_alpha - 1))))
 
