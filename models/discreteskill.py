@@ -1,4 +1,4 @@
-from typing import Tuple, Sequence, Callable
+from typing import Tuple, Any, Sequence, Callable
 
 from jax import numpy as jnp, random, vmap
 from jax.scipy.stats import norm
@@ -116,6 +116,37 @@ def update(pi_t_tm1_p1: jnp.ndarray,
     return pl1, pl2, jnp.sum(jnp.sum(joint, axis =0), axis =0)
 
 filter = get_discrete_filter(propagate, update)
+
+
+def smoother(filter_skill_t: jnp.ndarray,
+             time: float,
+             smooth_skill_tplus1: jnp.ndarray,
+             time_plus1: float,
+             tau: float,
+             _: Any) -> Tuple[jnp.ndarray, float]:
+
+    skills = filter_skill_t.shape[0]
+    K_delta_t = CTMC_kernel_reflected(skills, tau)  
+
+    delta_tp1_update = (time_plus1 - time)
+
+
+    reverse_kernel_numerator   = jnp.reshape(filter_skill_t, (skills, 1))*K_delta_t(delta_tp1_update)
+    reverse_kernel_denominator = jnp.einsum("j,jk->k", filter_skill_t, K_delta_t(delta_tp1_update))
+    reverse_kernel             = reverse_kernel_numerator/jnp.reshape(reverse_kernel_denominator, (1, reverse_kernel_denominator.shape[0]))
+
+    pi_t_T_update = jnp.einsum("j,kj->k",  smooth_skill_tplus1, reverse_kernel)
+    joint_pi_t_T  = jnp.einsum("j,kj->kj", smooth_skill_tplus1, reverse_kernel)
+
+    return pi_t_T_update, joint_pi_t_T
+
+def get_sum_t1_diffs_single(times: jnp.ndarray,
+                            smoother_skills: jnp.ndarray) -> Tuple[int, float]:
+    time_diff = times[1:] - times[:-1]
+    smoother_diff2_div_time_diff = jnp.square(smoother_skills[1:] - smoother_skills[:-1]) / time_diff[..., jnp.newaxis]
+
+    return (~jnp.isnan(smoother_diff2_div_time_diff)).sum(), \
+           jnp.where(jnp.isnan(smoother_diff2_div_time_diff), 0, smoother_diff2_div_time_diff).sum()
 
 
 # smoother output array and matrix for the joint

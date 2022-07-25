@@ -62,35 +62,35 @@ def update(skill_p1: jnp.ndarray,
 filter = get_random_filter(propagate, update)
 
 
-# def smooth_single_sample(filter_skill_t: jnp.ndarray,
-#                          time: float,
-#                          smooth_skill_tplus1_single: jnp.ndarray,
-#                          time_plus1: float,
-#                          tau: float,
-#                          random_key: jnp.ndarray) -> jnp.ndarray:
-#     log_samp_probs = - jnp.square(smooth_skill_tplus1_single - filter_skill_t) / ((time_plus1 - time) * (tau ** 2))
-#     samp_ind = random.categorical(random_key, log_samp_probs)
-#     return filter_skill_t[samp_ind]
+def smooth_single_sample(filter_skill_t: jnp.ndarray,
+                         time: float,
+                         smooth_skill_tplus1_single: jnp.ndarray,
+                         time_plus1: float,
+                         tau: float,
+                         random_key: jnp.ndarray) -> jnp.ndarray:
+    log_samp_probs = - jnp.square(smooth_skill_tplus1_single - filter_skill_t) / ((time_plus1 - time) * (tau ** 2))
+    samp_ind = random.categorical(random_key, log_samp_probs)
+    return filter_skill_t[samp_ind]
 
 
-# def smoother(filter_skill_t: jnp.ndarray,
-#              time: float,
-#              smooth_skill_tplus1: jnp.ndarray,
-#              time_plus1: float,
-#              tau: float,
-#              random_key: jnp.ndarray) -> Tuple[jnp.ndarray, None]:
-#     rks = random.split(random_key, len(filter_skill_t))
-#     return vmap(smooth_single_sample, in_axes=(None, None, 0, None, None, 0)) \
-#                (filter_skill_t, time, smooth_skill_tplus1, time_plus1, tau, rks), None
+def smoother(filter_skill_t: jnp.ndarray,
+             time: float,
+             smooth_skill_tplus1: jnp.ndarray,
+             time_plus1: float,
+             tau: float,
+             random_key: jnp.ndarray) -> Tuple[jnp.ndarray, None]:
+    rks = random.split(random_key, len(filter_skill_t))
+    return vmap(smooth_single_sample, in_axes=(None, None, 0, None, None, 0)) \
+               (filter_skill_t, time, smooth_skill_tplus1, time_plus1, tau, rks), None
 
 
-# def get_sum_t1_diffs_single(times: jnp.ndarray,
-#                             smoother_skills: jnp.ndarray) -> Tuple[int, float]:
-#     time_diff = times[1:] - times[:-1]
-#     smoother_diff2_div_time_diff = jnp.square(smoother_skills[1:] - smoother_skills[:-1]) / time_diff[..., jnp.newaxis]
+def get_sum_t1_diffs_single(times: jnp.ndarray,
+                            smoother_skills: jnp.ndarray) -> Tuple[int, float]:
+    time_diff = times[1:] - times[:-1]
+    smoother_diff2_div_time_diff = jnp.square(smoother_skills[1:] - smoother_skills[:-1]) / time_diff[..., jnp.newaxis]
 
-#     return (~jnp.isnan(smoother_diff2_div_time_diff)).sum(), \
-#            jnp.where(jnp.isnan(smoother_diff2_div_time_diff), 0, smoother_diff2_div_time_diff).sum()
+    return (~jnp.isnan(smoother_diff2_div_time_diff)).sum(), \
+           jnp.where(jnp.isnan(smoother_diff2_div_time_diff), 0, smoother_diff2_div_time_diff).sum()
 
 
 # def maximiser_no_draw(times_by_player: Sequence,
