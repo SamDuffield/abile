@@ -153,8 +153,7 @@ def expectation_maximisation(initiator: Callable,
                                prop_params,
                                rk) for p_ind in range(len(times_by_player))]
 
-    # smoother_sweep_jit = jit(smoother_sweep_split)
-    smoother_sweep_jit = smoother_sweep_split
+    smoother_sweep_jit = jit(smoother_sweep_split)
 
     for i in range(n_steps):
         random_key, initiate_key, filter_key, smoother_key, maximiser_key = random.split(random_key, 5)

@@ -11,10 +11,11 @@ n_players = 10
 n_matches = 15
 
 init_mean = 0.
-init_sd = 1.
-tau = 1.
-s = 2.
-epsilon = 1.
+init_var = 3.
+tau = 0.5
+s = 1.
+epsilon = 2.
+
 
 mt_key, mi_key, init_skill_key, sim_key, filter_key, init_particle_key = random.split(rk, 6)
 
@@ -23,7 +24,7 @@ mi_keys = random.split(mi_key, n_matches)
 match_indices_seq = vmap(lambda rk: random.choice(rk, a=jnp.arange(n_players, ), shape=(2,), replace=False))(mi_keys)
 
 init_player_times = jnp.zeros(n_players)
-init_player_skills = init_mean + init_sd * random.normal(init_skill_key, shape=(n_players,))
+init_player_skills = init_mean + jnp.sqrt(init_var) * random.normal(init_skill_key, shape=(n_players,))
 
 
 # Simulate data from trueskill model

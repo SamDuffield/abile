@@ -34,7 +34,7 @@ def update(skill_p1: float,
     w_p2 = 1 - w_p1
 
     skill_p1 = skill_p1 + k * (w_p1 - prob_vp1)
-    skill_p2 = skill_p1 + k * (w_p2 - prob_vp2)
+    skill_p2 = skill_p2 + k * (w_p2 - prob_vp2)
 
     predict_probs = jnp.array([0., prob_vp1, prob_vp2])
 
