@@ -67,37 +67,6 @@ def get_basic_filter(propagate: Callable,
     return filter
 
 
-def get_discrete_filter(propagate: Callable,
-                        update: Callable) -> Callable:
-    def filter(player_times: jnp.ndarray,
-               player_skills: jnp.ndarray,
-               match_time: float,
-               match_player_indices: jnp.ndarray,
-               match_result: int,
-               static_propagate_params: Any,
-               static_update_params: Any,
-               _: Any = None) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        p1_ind, p2_ind = match_player_indices
-
-        p1_time = player_times[p1_ind]
-        p2_time = player_times[p2_ind]
-
-        p1_skill = propagate(player_skills[p1_ind,:], match_time - p1_time, static_propagate_params, None)
-        p2_skill = propagate(player_skills[p2_ind,:], match_time - p2_time, static_propagate_params, None)
-
-        p1_skill, p2_skill, predict_probs = update(p1_skill, p2_skill, match_result, static_update_params, None)
-
-        player_times = player_times.at[p1_ind].set(match_time)
-        player_times = player_times.at[p2_ind].set(match_time)
-
-        player_skills = player_skills.at[p1_ind,:].set(p1_skill)
-        player_skills = player_skills.at[p2_ind,:].set(p2_skill)
-
-        return player_times, player_skills, predict_probs
-
-    return filter
-
-
 def filter_sweep(filter: Callable,
                  init_player_times: jnp.ndarray,
                  init_player_skills: jnp.ndarray,
