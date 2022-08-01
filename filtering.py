@@ -79,6 +79,7 @@ def filter_sweep(filter: Callable,
     def scan_body(carry,
                   match_ind: int) \
             -> Tuple[Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
+
         player_times, player_skills, int_random_key = carry
 
         int_random_key, filter_random_key = random.split(int_random_key)
@@ -109,3 +110,5 @@ def filter_sweep(filter: Callable,
     out_skills_ind0, out_skills_ind1, predict_probs_all = out_stack
 
     return out_skills_ind0, out_skills_ind1, predict_probs_all
+
+    
