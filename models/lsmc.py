@@ -111,7 +111,7 @@ def maximiser_no_draw(times_by_player: Sequence,
                       i: int,
                       random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     times_by_player_clean = [t for t in times_by_player if len(t) > 1]
-    smoother_skills_and_extras_by_player_clean = [p for p in smoother_skills_and_extras_by_player if len(p[0]) > 1]
+    smoother_skills_and_extras_by_player_clean = [p for p in smoother_skills_and_extras_by_player if len(p[0]) > 1] # what is this?
     init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player_clean])
 
     init_var_num = (jnp.square(init_smoothing_skills - initial_params[0]) / n_particles).sum() + 2 * init_var_inv_prior_beta

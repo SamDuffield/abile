@@ -197,7 +197,7 @@ def maximiser(times_by_player: Sequence,
     optim_res = minimize(negative_expected_log_obs_dens, update_params[1], method='cobyla')
 
     assert optim_res.success, 'epsilon optimisation failed'
-    maxed_epsilon = jnp.exp(optim_res.x)[0]
+    maxed_epsilon = optim_res.x[0]
     maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
 
     return maxed_initial_params, maxed_tau, maxed_s_and_epsilon
