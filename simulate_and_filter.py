@@ -90,7 +90,7 @@ plot_predictions(ax, glicko_filter_out[-1], 1)
 plot_predictions(ax, trueskill_filter_out[-1], 2)
 plot_predictions(ax, lsmc_filter_out[-1], 3)
 plot_predictions(ax, discrete_filter_out[-1], 4)
-ax.set_xticks(inds + bin_width * 1.5, jnp.arange(n_matches))
+ax.set_xticks(jnp.arange(n_matches))
 
 res_cols = [['blue', 'green', 'purple'][r] for r in sim_results]
 res_to_probpos = {0: 0.5, 1: 0, 2: 1}
