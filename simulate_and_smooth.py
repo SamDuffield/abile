@@ -105,7 +105,7 @@ discrete_smoother_skills_and_extras = [smoother_sweep(models.discrete.smoother,
                                                       discrete_times_by_player[p_ind],
                                                       discrete_filter_skills_by_player[p_ind],
                                                       init_tau,
-                                                      None) for p_ind in range(len(lsmc_times_by_player))]
+                                                      None) for p_ind in range(len(discrete_times_by_player))]
 
 
 # # Plot filtering
