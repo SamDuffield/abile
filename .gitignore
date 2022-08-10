@@ -134,6 +134,7 @@ dmypy.json
 # PyCharm
 .idea/
 
-
+# Notebook
+.ipynb
 
 archive/
