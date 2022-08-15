@@ -65,8 +65,8 @@ initial_distribution_skills = jnp.zeros(10)
 initial_distribution_skills = initial_distribution_skills.at[0].set(0.8)
 initial_distribution_skills = initial_distribution_skills.at[1].set(0.2)
 
-_, initial_distribution_skills_player = models.discreteskill.initiator(n_players, initial_distribution_skills, rk)
-discrete_filter_out = filter_sweep_data(models.discreteskill.filter,
+_, initial_distribution_skills_player = models.discrete.initiator(n_players, initial_distribution_skills, rk)
+discrete_filter_out = filter_sweep_data(models.discrete.filter,
                                         init_player_skills=initial_distribution_skills_player,
                                         static_propagate_params=tau, static_update_params=[s, epsilon])
 
