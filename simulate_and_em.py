@@ -6,8 +6,8 @@ from smoothing import expectation_maximisation
 
 rk = random.PRNGKey(0)
 
-n_players = 50
-n_matches = 1000
+n_players = 20
+n_matches = 130
 
 init_mean = 0.
 init_var = 3.
@@ -66,35 +66,52 @@ em_init_s_and_epsilon = jnp.array([s, epsilon / 2])
 # em_init_tau = tau
 # em_init_s_and_epsilon = jnp.array([s, epsilon])
 
+#
+# # TrueSkill (EP)
+# initial_params_ep, propagate_params_ep, update_params_ep = expectation_maximisation(models.trueskill.initiator,
+#                                                                                     models.trueskill.filter,
+#                                                                                     models.trueskill.smoother,
+#                                                                                     models.trueskill.maximiser,
+#                                                                                     em_init_mean_and_var,
+#                                                                                     em_init_tau,
+#                                                                                     em_init_s_and_epsilon,
+#                                                                                     match_times,
+#                                                                                     match_indices_seq,
+#                                                                                     sim_results,
+#                                                                                     n_em_steps,
+#                                                                                     n_players=n_players)
+#
+# # TrueSkill (SMC)
+# models.lsmc.n_particles = 1000
+# initial_params_smc, propagate_params_smc, update_params_smc = expectation_maximisation(models.lsmc.initiator,
+#                                                                                        models.lsmc.filter,
+#                                                                                        models.lsmc.smoother,
+#                                                                                        models.lsmc.maximiser,
+#                                                                                        em_init_mean_and_var,
+#                                                                                        em_init_tau,
+#                                                                                        em_init_s_and_epsilon,
+#                                                                                        match_times,
+#                                                                                        match_indices_seq,
+#                                                                                        sim_results,
+#                                                                                        n_em_steps,
+#                                                                                        n_players=n_players)
 
-# TrueSkill (EP)
-initial_params_ep, propagate_params_ep, update_params_ep = expectation_maximisation(models.trueskill.initiator,
-                                                                                    models.trueskill.filter,
-                                                                                    models.trueskill.smoother,
-                                                                                    models.trueskill.maximiser,
-                                                                                    em_init_mean_and_var,
-                                                                                    em_init_tau,
-                                                                                    em_init_s_and_epsilon,
-                                                                                    match_times,
-                                                                                    match_indices_seq,
-                                                                                    sim_results,
-                                                                                    n_em_steps,
-                                                                                    n_players=n_players)
-
-# TrueSkill (SMC)
-models.lsmc.n_particles = 1000
-initial_params_smc, propagate_params_smc, update_params_smc = expectation_maximisation(models.lsmc.initiator,
-                                                                                       models.lsmc.filter,
-                                                                                       models.lsmc.smoother,
-                                                                                       models.lsmc.maximiser,
-                                                                                       em_init_mean_and_var,
-                                                                                       em_init_tau,
-                                                                                       em_init_s_and_epsilon,
-                                                                                       match_times,
-                                                                                       match_indices_seq,
-                                                                                       sim_results,
-                                                                                       n_em_steps,
-                                                                                       n_players=n_players)
+# Discrete
+discrete_m = 100
+em_init_dist = jnp.ones(discrete_m) / discrete_m
+initial_params_discrete, propagate_params_discrete, update_params_discrete \
+    = expectation_maximisation(models.discrete.initiator,
+                               models.discrete.filter,
+                               models.discrete.smoother,
+                               models.discrete.maximiser,
+                               em_init_dist,
+                               em_init_tau,
+                               em_init_s_and_epsilon,
+                               match_times,
+                               match_indices_seq,
+                               sim_results,
+                               n_em_steps,
+                               n_players=n_players)
 
 fig, axes = plt.subplots(3, figsize=(5, 10))
 
