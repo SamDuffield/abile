@@ -16,7 +16,6 @@ tau = 0.5
 s = 1.
 epsilon = 2.
 
-
 mt_key, mi_key, init_skill_key, sim_key, filter_key, init_particle_key = random.split(rk, 6)
 
 match_times = random.uniform(mt_key, shape=(n_matches,)).sort()
@@ -25,7 +24,6 @@ match_indices_seq = vmap(lambda rk: random.choice(rk, a=jnp.arange(n_players, ),
 
 init_player_times = jnp.zeros(n_players)
 init_player_skills = init_mean + jnp.sqrt(init_var) * random.normal(init_skill_key, shape=(n_players,))
-
 
 # Simulate data from trueskill model
 sim_skills_p1, sim_skills_p2, sim_results = models.trueskill.simulate(init_player_times,
@@ -37,7 +35,7 @@ sim_skills_p1, sim_skills_p2, sim_results = models.trueskill.simulate(init_playe
                                                                       sim_key)
 # Filter (with arbitrary parameters)
 filter_sweep_data = partial(filter_sweep,
-                            init_player_times=init_player_times,
+                            init_player_times=jnp.zeros(n_players),
                             match_times=match_times,
                             match_player_indices_seq=match_indices_seq,
                             match_results=sim_results,
@@ -58,14 +56,22 @@ trueskill_filter_out = filter_sweep_data(models.trueskill.filter,
 
 n_particles = 100
 init_player_skills_particles = init_player_skills.reshape(n_players, 1) \
-                               + init_sd * random.normal(init_particle_key, shape=(n_players, n_particles))
+                               + jnp.sqrt(init_var) * random.normal(init_particle_key, shape=(n_players, n_particles))
 lsmc_filter_out = filter_sweep_data(models.lsmc.filter,
                                     init_player_skills=init_player_skills_particles,
                                     static_propagate_params=tau, static_update_params=[s, epsilon])
 
+initial_distribution_skills = jnp.zeros(10)
+initial_distribution_skills = initial_distribution_skills.at[0].set(0.8)
+initial_distribution_skills = initial_distribution_skills.at[1].set(0.2)
+
+_, initial_distribution_skills_player = models.discrete.initiator(n_players, initial_distribution_skills, rk)
+discrete_filter_out = filter_sweep_data(models.discrete.filter,
+                                        init_player_skills=initial_distribution_skills_player,
+                                        static_propagate_params=tau, static_update_params=[s, epsilon])
 
 # Plot results
-bin_width = 0.2
+bin_width = 0.15
 inds = jnp.arange(n_matches)
 alph = 0.5
 
@@ -83,7 +89,8 @@ plot_predictions(ax, elo_filter_out[-1], 0)
 plot_predictions(ax, glicko_filter_out[-1], 1)
 plot_predictions(ax, trueskill_filter_out[-1], 2)
 plot_predictions(ax, lsmc_filter_out[-1], 3)
-ax.set_xticks(inds + bin_width * 1.5, jnp.arange(n_matches))
+plot_predictions(ax, discrete_filter_out[-1], 4)
+ax.set_xticks(jnp.arange(n_matches))
 
 res_cols = [['blue', 'green', 'purple'][r] for r in sim_results]
 res_to_probpos = {0: 0.5, 1: 0, 2: 1}

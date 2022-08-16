@@ -64,27 +64,6 @@ def times_and_skills_by_match_to_by_player(init_times: jnp.ndarray,
 
     return times, skills
 
-def times_and_skills_by_match_to_by_player_dicrete(init_times: jnp.ndarray,
-                                           init_skills: jnp.ndarray,
-                                           match_times: jnp.ndarray,
-                                           match_player_indices_seq: jnp.ndarray,
-                                           filter_skills_1: jnp.ndarray,
-                                           filter_skills_2: jnp.ndarray) -> Tuple[list, list]:
-    times = [t[jnp.newaxis] for t in init_times]
-    skills = [s[jnp.newaxis] for s in init_skills]
-
-    for i in range(len(match_times)):
-        t = match_times[i]
-        p1_ind, p2_ind = match_player_indices_seq[i]
-
-        times[p1_ind] = jnp.append(times[p1_ind], t)
-        times[p2_ind] = jnp.append(times[p2_ind], t)
-
-        skills[p1_ind] = jnp.concatenate([skills[p1_ind,:], filter_skills_1[i][jnp.newaxis]])
-        skills[p2_ind] = jnp.concatenate([skills[p2_ind,:], filter_skills_2[i][jnp.newaxis]])
-
-    return times, skills
-
 
 def times_and_skills_by_player_to_by_match(times_by_player: Sequence,
                                            skills_by_player: Sequence,

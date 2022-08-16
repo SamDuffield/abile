@@ -16,7 +16,6 @@ tau = 0.5
 s = 1.
 epsilon = 2.
 
-
 mt_key, mi_key, init_skill_key, sim_key, filter_key, init_particle_key = random.split(rk, 6)
 
 # match_times = random.uniform(mt_key, shape=(n_matches,)).sort()
@@ -38,7 +37,6 @@ sim_skills_p1, sim_skills_p2, sim_results = models.trueskill.simulate(init_playe
 
 print(f'Prop draws = {(sim_results == 0).mean() * 100:.2f}%')
 
-
 true_times_by_player, true_skills_by_player = times_and_skills_by_match_to_by_player(init_player_times,
                                                                                      init_player_skills,
                                                                                      match_times,
@@ -46,15 +44,15 @@ true_times_by_player, true_skills_by_player = times_and_skills_by_match_to_by_pl
                                                                                      sim_skills_p1,
                                                                                      sim_skills_p2)
 
-em_init_mean_and_var = jnp.array([init_mean, init_var])
-em_init_tau = tau
-em_init_s_and_epsilon = jnp.array([s, epsilon])
+init_mean_and_var = jnp.array([init_mean, init_var])
+init_tau = tau
+init_s_and_epsilon = jnp.array([s, epsilon])
 
 # TrueSkill (EP) filter and smooth
-trueskill_init_times, trueskill_init_skills = models.trueskill.initiator(n_players, em_init_mean_and_var)
+trueskill_init_times, trueskill_init_skills = models.trueskill.initiator(n_players, init_mean_and_var)
 trueskill_filter_out = filter_sweep(models.trueskill.filter,
                                     trueskill_init_times, trueskill_init_skills,
-                                    match_times, match_indices_seq, sim_results, em_init_tau, em_init_s_and_epsilon)
+                                    match_times, match_indices_seq, sim_results, init_tau, init_s_and_epsilon)
 
 trueskill_times_by_player, trueskill_filter_skills_by_player = times_and_skills_by_match_to_by_player(
     trueskill_init_times,
@@ -66,15 +64,15 @@ trueskill_times_by_player, trueskill_filter_skills_by_player = times_and_skills_
 trueskill_smoother_skills_and_extras = [smoother_sweep(models.trueskill.smoother,
                                                        trueskill_times_by_player[p_ind],
                                                        trueskill_filter_skills_by_player[p_ind],
-                                                       em_init_tau,
+                                                       init_tau,
                                                        None) for p_ind in range(len(trueskill_times_by_player))]
 
 # TrueSkill (SMC) filter and smooth
 models.lsmc.n_particles = 1000
-lsmc_init_times, lsmc_init_skills = models.lsmc.initiator(n_players, em_init_mean_and_var, rk)
+lsmc_init_times, lsmc_init_skills = models.lsmc.initiator(n_players, init_mean_and_var, rk)
 lsmc_filter_out = filter_sweep(models.lsmc.filter,
                                lsmc_init_times, lsmc_init_skills,
-                               match_times, match_indices_seq, sim_results, em_init_tau, em_init_s_and_epsilon)
+                               match_times, match_indices_seq, sim_results, init_tau, init_s_and_epsilon)
 
 lsmc_times_by_player, lsmc_filter_skills_by_player = times_and_skills_by_match_to_by_player(lsmc_init_times,
                                                                                             lsmc_init_skills,
@@ -85,38 +83,74 @@ lsmc_times_by_player, lsmc_filter_skills_by_player = times_and_skills_by_match_t
 lsmc_smoother_skills_and_extras = [smoother_sweep(models.lsmc.smoother,
                                                   lsmc_times_by_player[p_ind],
                                                   lsmc_filter_skills_by_player[p_ind],
-                                                  em_init_tau,
+                                                  init_tau,
                                                   None) for p_ind in range(len(lsmc_times_by_player))]
 
+# Discrete filter and smooth
+m = 100
+discrete_init_times, discrete_init_skills = models.discrete.initiator(n_players, jnp.ones(m) / m)
+discrete_filter_out = filter_sweep(models.discrete.filter,
+                                   discrete_init_times, discrete_init_skills,
+                                   match_times, match_indices_seq, sim_results, init_tau, init_s_and_epsilon)
+
+discrete_times_by_player, discrete_filter_skills_by_player \
+    = times_and_skills_by_match_to_by_player(discrete_init_times,
+                                             discrete_init_skills,
+                                             match_times,
+                                             match_indices_seq,
+                                             discrete_filter_out[0],
+                                             discrete_filter_out[1])
+
+discrete_smoother_skills_and_extras = [smoother_sweep(models.discrete.smoother,
+                                                      discrete_times_by_player[p_ind],
+                                                      discrete_filter_skills_by_player[p_ind],
+                                                      init_tau,
+                                                      None) for p_ind in range(len(discrete_times_by_player))]
+
+
+# # Plot filtering
 # for i in range(min(n_players, 5)):
 #     fig, ax = plt.subplots()
+#     ax.plot(true_times_by_player[i], true_skills_by_player[i], color='red', label='Truth', zorder=100)
 #     ts_mn = trueskill_filter_skills_by_player[i][:, 0]
 #     ts_sd = jnp.sqrt(trueskill_filter_skills_by_player[i][:, 1])
 #     ax.fill_between(trueskill_times_by_player[i], ts_mn - ts_sd, ts_mn + ts_sd, color='blue', alpha=0.25, linewidth=0)
-#     ax.plot(trueskill_times_by_player[i], ts_mn, color='blue')
+#     ax.plot(trueskill_times_by_player[i], ts_mn, color='blue', label='TrueSkill')
 #
 #     lsmc_mn = lsmc_filter_skills_by_player[i].mean(1)
 #     lsmc_std = jnp.std(lsmc_filter_skills_by_player[i], axis=1)
 #     ax.fill_between(lsmc_times_by_player[i], lsmc_mn - lsmc_std, lsmc_mn + lsmc_std,
 #                     color='green', alpha=0.25, linewidth=0)
-#     ax.plot(lsmc_times_by_player[i], lsmc_mn, color='green')
+#     ax.plot(lsmc_times_by_player[i], lsmc_mn, color='green', label='SMC')
+#     ax_d = ax.twinx()
+#     d_mn = (jnp.arange(m) * discrete_filter_skills_by_player[i]).sum(1)
+#     ax_d.plot(discrete_times_by_player[i], d_mn, color='orange', label='Discrete')
 #
-#     ax.plot(true_times_by_player[i], true_skills_by_player[i], color='red')
+#     ax.legend(loc='upper left')
+#     ax_d.legend(loc='upper right')
 
 
+# Plot smoothing
 for i in range(min(n_players, 5)):
     fig, ax = plt.subplots()
+    ax.plot(true_times_by_player[i], true_skills_by_player[i], color='red', label='Truth', zorder=100)
     ts_mn = trueskill_smoother_skills_and_extras[i][0][:, 0]
     ts_sd = jnp.sqrt(trueskill_smoother_skills_and_extras[i][0][:, 1])
     ax.fill_between(trueskill_times_by_player[i], ts_mn - ts_sd, ts_mn + ts_sd, color='blue', alpha=0.25, linewidth=0)
-    ax.plot(trueskill_times_by_player[i], ts_mn, color='blue')
+    ax.plot(trueskill_times_by_player[i], ts_mn, color='blue', label='TrueSkill')
 
     lsmc_mn = lsmc_smoother_skills_and_extras[i][0].mean(1)
     lsmc_std = jnp.std(lsmc_smoother_skills_and_extras[i][0], axis=1)
     ax.fill_between(lsmc_times_by_player[i], lsmc_mn - lsmc_std, lsmc_mn + lsmc_std,
                     color='green', alpha=0.25, linewidth=0)
-    ax.plot(lsmc_times_by_player[i], lsmc_mn, color='green')
+    ax.plot(lsmc_times_by_player[i], lsmc_mn, color='green', label='SMC')
 
-    ax.plot(true_times_by_player[i], true_skills_by_player[i], color='red')
+    ax_d = ax.twinx()
+    d_mn = (jnp.arange(m) * discrete_smoother_skills_and_extras[i][0]).sum(1)
+    ax_d.plot(discrete_times_by_player[i], d_mn, color='orange', label='Discrete')
+
+    ax.legend(loc='upper left')
+    ax_d.legend(loc='upper right')
+
 
 

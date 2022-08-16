@@ -101,15 +101,18 @@ def get_sum_t1_diffs_single(times: jnp.ndarray,
     return (~bad_inds).sum(), jnp.where(bad_inds, 0, smoother_diff2_div_time_diff).sum()
 
 
-def maximiser_no_draw(times_by_player: Sequence,
-                      smoother_skills_and_extras_by_player: Sequence,
-                      match_player_indices_seq: jnp.ndarray,
-                      match_results: jnp.ndarray,
-                      initial_params: jnp.ndarray,
-                      propagate_params: jnp.ndarray,
-                      update_params: jnp.ndarray,
-                      i: int,
-                      random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+def maximiser(times_by_player: Sequence,
+              smoother_skills_and_extras_by_player: Sequence,
+              match_player_indices_seq: jnp.ndarray,
+              match_results: jnp.ndarray,
+              initial_params: jnp.ndarray,
+              propagate_params: jnp.ndarray,
+              update_params: jnp.ndarray,
+              i: int,
+              random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+
+    no_draw_bool = (update_params[1] == 0.) and (0 not in match_results)
+
     times_by_player_clean = [t for t in times_by_player if len(t) > 1]
     smoother_skills_and_extras_by_player_clean = [p for p in smoother_skills_and_extras_by_player if len(p[0]) > 1]
     init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player_clean])
@@ -126,46 +129,33 @@ def maximiser_no_draw(times_by_player: Sequence,
     maxed_tau = jnp.sqrt(((num_diff_terms_and_diff_sums[:, 1].sum() + 2 * n_particles * tau2_inv_prior_beta)
                           / (num_diff_terms_and_diff_sums[:, 0].sum() + 2 * n_particles * (tau2_inv_prior_alpha - 1))))
 
-    return maxed_initial_params, maxed_tau, update_params
+    if no_draw_bool:
+        maxed_s_and_epsilon = update_params
+    else:
+        smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player]
 
+        match_times, match_skills_p1, match_skills_p2 = times_and_skills_by_player_to_by_match(times_by_player,
+                                                                                               smoother_skills_by_player,
+                                                                                               match_player_indices_seq)
 
-def maximiser(times_by_player: Sequence,
-              smoother_skills_and_extras_by_player: Sequence,
-              match_player_indices_seq: jnp.ndarray,
-              match_results: jnp.ndarray,
-              initial_params: jnp.ndarray,
-              propagate_params: jnp.ndarray,
-              update_params: jnp.ndarray,
-              i: int,
-              random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    maxed_initial_params, maxed_tau, _ = maximiser_no_draw(times_by_player, smoother_skills_and_extras_by_player,
-                                                           match_player_indices_seq, match_results, initial_params,
-                                                           propagate_params, update_params, i, random_key)
+        def negative_expected_log_obs_dens(log_epsilon: jnp.ndarray) -> float:
+            def p_y_given_x(skill_p1: jnp.ndarray,
+                            skill_p2: jnp.ndarray,
+                            match_result: int) -> float:
+                s_and_eps = update_params.at[1].set(jnp.exp(log_epsilon[0]))
+                all_probs = predict(skill_p1, skill_p2, s_and_eps)[match_result]
+                all_probs = jnp.where(all_probs < 1e-20, 1e-20, all_probs)
+                return jnp.log(all_probs).mean()
 
-    smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player]
+            return -((vmap(p_y_given_x)(match_skills_p1, match_skills_p2, match_results)).mean()
+                   + ((epsilon_prior_alpha - 1) * log_epsilon[0]
+                      - epsilon_prior_beta * jnp.exp(log_epsilon[0])) / len(match_results))
 
-    match_times, match_skills_p1, match_skills_p2 = times_and_skills_by_player_to_by_match(times_by_player,
-                                                                                           smoother_skills_by_player,
-                                                                                           match_player_indices_seq)
+        optim_res = minimize(negative_expected_log_obs_dens, jnp.log(update_params[-1:]), method='cobyla')
 
-    def negative_expected_log_obs_dens(log_epsilon: jnp.ndarray) -> float:
-        def p_y_given_x(skill_p1: jnp.ndarray,
-                        skill_p2: jnp.ndarray,
-                        match_result: int) -> float:
-            s_and_eps = update_params.at[1].set(jnp.exp(log_epsilon[0]))
-            all_probs = predict(skill_p1, skill_p2, s_and_eps)[match_result]
-            all_probs = jnp.where(all_probs < 1e-20, 1e-20, all_probs)
-            return jnp.log(all_probs).mean()
-
-        return -((vmap(p_y_given_x)(match_skills_p1, match_skills_p2, match_results)).mean()\
-               + ((epsilon_prior_alpha - 1) * log_epsilon[0]
-                  - epsilon_prior_beta * jnp.exp(log_epsilon[0])) / len(match_results))
-
-    optim_res = minimize(negative_expected_log_obs_dens, jnp.log(update_params[-1:]), method='cobyla')
-
-    assert optim_res.success, 'epsilon optimisation failed'
-    maxed_epsilon = jnp.exp(optim_res.x)[0]
-    maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
+        assert optim_res.success, 'epsilon optimisation failed'
+        maxed_epsilon = jnp.exp(optim_res.x)[0]
+        maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
 
     return maxed_initial_params, maxed_tau, maxed_s_and_epsilon
 
