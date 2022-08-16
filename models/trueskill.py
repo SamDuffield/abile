@@ -220,35 +220,6 @@ def log_vp2_prob(z, s_eps):
     return jnp.log(prob)
 
 
-def maximiser_no_draw(times_by_player: Sequence,
-                      smoother_skills_and_extras_by_player: Sequence,
-                      match_player_indices_seq: jnp.ndarray,
-                      match_results: jnp.ndarray,
-                      initial_params: jnp.ndarray,
-                      propagate_params: jnp.ndarray,
-                      update_params: jnp.ndarray,
-                      i: int,
-                      random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    times_by_player_clean = [t for t in times_by_player if len(t) > 1]
-    smoother_skills_and_extras_by_player_clean = [p for p in smoother_skills_and_extras_by_player if len(p[0]) > 1]
-    init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player_clean])
-    max_init_mean = initial_params[0]
-    init_var_num = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
-                       - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).sum() + 2 * init_var_inv_prior_beta
-    init_var_denom = len(init_smoothing_skills) + 2 * (init_var_inv_prior_alpha - 1)
-    max_init_var = init_var_num / init_var_denom
-    # max_init_var = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
-    #                 - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).mean()
-    maxed_initial_params = jnp.array([max_init_mean, max_init_var])
-
-    num_diff_terms_and_diff_sums = jnp.array([get_sum_t1_diffs_single(t, se)
-                                              for t, se in zip(times_by_player_clean, smoother_skills_and_extras_by_player_clean)])
-    maxed_tau = jnp.sqrt((num_diff_terms_and_diff_sums[:, 1].sum() + 2 * tau2_inv_prior_beta)
-                         / (num_diff_terms_and_diff_sums[:, 0].sum() + 2 * (tau2_inv_prior_alpha - 1)))
-
-    return maxed_initial_params, maxed_tau, update_params
-
-
 def maximiser(times_by_player: Sequence,
               smoother_skills_and_extras_by_player: Sequence,
               match_player_indices_seq: jnp.ndarray,
@@ -258,37 +229,58 @@ def maximiser(times_by_player: Sequence,
               update_params: jnp.ndarray,
               i: int,
               random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    maxed_initial_params, maxed_tau, _ = maximiser_no_draw(times_by_player, smoother_skills_and_extras_by_player,
-                                                           match_player_indices_seq, match_results, initial_params,
-                                                           propagate_params, update_params, i, random_key)
 
-    smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player]
-    match_times, match_skills_p1, match_skills_p2 = times_and_skills_by_player_to_by_match(times_by_player,
-                                                                                           smoother_skills_by_player,
-                                                                                           match_player_indices_seq)
+    no_draw_bool = (update_params[1] == 0.) and (0 not in match_results)
 
-    def negative_expected_log_obs_dens(log_epsilon: jnp.ndarray) -> float:
-        s_and_epsilon = update_params.at[1].set(jnp.exp(log_epsilon[0]))
+    times_by_player_clean = [t for t in times_by_player if len(t) > 1]
+    smoother_skills_and_extras_by_player_clean = [p for p in smoother_skills_and_extras_by_player if len(p[0]) > 1]
+    init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player_clean])
+    max_init_mean = initial_params[0]
+    init_var_num = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
+                    - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).sum()\
+                   + 2 * init_var_inv_prior_beta
+    init_var_denom = len(init_smoothing_skills) + 2 * (init_var_inv_prior_alpha - 1)
+    max_init_var = init_var_num / init_var_denom
+    # max_init_var = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
+    #                 - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).mean()
+    maxed_initial_params = jnp.array([max_init_mean, max_init_var])
 
-        ghint = partial(gauss_hermite_integration,
-                        mean=match_skills_p1[:, 0] - match_skills_p2[:, 0],
-                        sd=jnp.sqrt(match_skills_p1[:, 1] + match_skills_p2[:, 1]),
-                        extra_params=s_and_epsilon,
-                        degree=gauss_hermite_degree)
+    num_diff_terms_and_diff_sums = jnp.array([get_sum_t1_diffs_single(t, se)
+                                              for t, se in
+                                              zip(times_by_player_clean, smoother_skills_and_extras_by_player_clean)])
+    maxed_tau = jnp.sqrt((num_diff_terms_and_diff_sums[:, 1].sum() + 2 * tau2_inv_prior_beta)
+                         / (num_diff_terms_and_diff_sums[:, 0].sum() + 2 * (tau2_inv_prior_alpha - 1)))
 
-        elogp_draw = ghint(integrand=log_draw_prob)
-        elogp_vp1 = ghint(integrand=log_vp1_prob)
-        elogp_vp2 = ghint(integrand=log_vp2_prob)
-        elogp_all = jnp.array([elogp_draw, elogp_vp1, elogp_vp2])
-        elogp = jnp.array([e[m] for e, m in zip(elogp_all.T, match_results)])
-        return - (elogp.mean() + ((epsilon_prior_alpha - 1) * log_epsilon[0]
-                  - epsilon_prior_beta * jnp.exp(log_epsilon[0])) / len(match_results))
+    if no_draw_bool:
+        maxed_s_and_epsilon = update_params
+    else:
+        smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player]
+        match_times, match_skills_p1, match_skills_p2 = times_and_skills_by_player_to_by_match(times_by_player,
+                                                                                               smoother_skills_by_player,
+                                                                                               match_player_indices_seq)
 
-    optim_result = minimize(negative_expected_log_obs_dens, jnp.log(update_params[-1:]), method='cobyla')
+        def negative_expected_log_obs_dens(log_epsilon: jnp.ndarray) -> float:
+            s_and_epsilon = update_params.at[1].set(jnp.exp(log_epsilon[0]))
 
-    assert optim_result.success, 'epsilon optimisation failed'
-    maxed_epsilon = jnp.exp(optim_result.x)[0]
-    maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
+            ghint = partial(gauss_hermite_integration,
+                            mean=match_skills_p1[:, 0] - match_skills_p2[:, 0],
+                            sd=jnp.sqrt(match_skills_p1[:, 1] + match_skills_p2[:, 1]),
+                            extra_params=s_and_epsilon,
+                            degree=gauss_hermite_degree)
+
+            elogp_draw = ghint(integrand=log_draw_prob)
+            elogp_vp1 = ghint(integrand=log_vp1_prob)
+            elogp_vp2 = ghint(integrand=log_vp2_prob)
+            elogp_all = jnp.array([elogp_draw, elogp_vp1, elogp_vp2])
+            elogp = jnp.array([e[m] for e, m in zip(elogp_all.T, match_results)])
+            return - (elogp.mean() + ((epsilon_prior_alpha - 1) * log_epsilon[0]
+                      - epsilon_prior_beta * jnp.exp(log_epsilon[0])) / len(match_results))
+
+        optim_result = minimize(negative_expected_log_obs_dens, jnp.log(update_params[-1:]), method='cobyla')
+
+        assert optim_result.success, 'epsilon optimisation failed'
+        maxed_epsilon = jnp.exp(optim_result.x)[0]
+        maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
 
     return maxed_initial_params, maxed_tau, maxed_s_and_epsilon
 
