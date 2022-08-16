@@ -8,8 +8,10 @@ from scipy.optimize import minimize
 from filtering import get_basic_filter
 from smoothing import times_and_skills_by_player_to_by_match
 
-# skills.shape = (number of players, number of particles)
+# skills.shape = (number of players, size of discrete skill space)
 # match_result in (0 for draw, 1 for p1 victory, 2 for p2 victory)
+# state_initial_params = (initial_distribution,)
+#       initial_distribution = full distribution of unseen player
 # static_propagate_params = (tau,)
 #       tau = rate of dynamics
 # static_update_params = (s, epsilon)
@@ -201,6 +203,8 @@ def maximiser(times_by_player: Sequence,
               i: int,
               random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
 
+    no_draw_bool = (update_params[1] == 0.) and (0 not in match_results)
+
     n_players = len(smoother_skills_and_extras_by_player)
 
     smoothing_list = [smoother_skills_and_extras_by_player[i][0] for i in range(n_players)]
@@ -208,11 +212,11 @@ def maximiser(times_by_player: Sequence,
 
     maxed_initial_params = jnp.array([smoothing_list[i][0] for i in range(n_players)]).mean(0)
 
-    skills = maxed_initial_params.shape[0]
+    m = maxed_initial_params.shape[0]
 
-    def negative_expected_log_propagate(tau):
-
-        K_delta_t = CTMC_kernel_reflected(skills, tau)
+    def negative_expected_log_propagate(log_tau):
+        tau = jnp.exp(log_tau)
+        K_delta_t = CTMC_kernel_reflected(m, tau)
         value_negative_expected_log_propagate = 0
         for ind in range(n_players):
             diff_time = (times_by_player[ind][1:] - times_by_player[ind][:-1])
@@ -228,26 +232,34 @@ def maximiser(times_by_player: Sequence,
     assert optim_res.success, 'tau optimisation failed'
     maxed_tau = optim_res.x[0]
 
-    def negative_expected_log_obs_dens(epsilon):
-        Phi = Phi_emission(update_params[0], epsilon, skills)
+    if no_draw_bool:
+        maxed_s_and_epsilon = update_params
+    else:
+        smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player]
 
-        value_negative_expected_log_update = 0
-        for t in range(len(match_results)):
-            joint_players = jnp.reshape(smoothing_list[match_player_indices_seq[t, 0]][t],
-                                        (skills, 1))\
-                            * jnp.reshape(smoothing_list[match_player_indices_seq[t, 1]][t], (1, skills))
-            current_Phi = Phi[:, :, match_results[t]]
+        match_times, match_skills_p1, match_skills_p2 = times_and_skills_by_player_to_by_match(times_by_player,
+                                                                                               smoother_skills_by_player,
+                                                                                               match_player_indices_seq)
 
-            value_negative_expected_log_update -= jnp.sum(jnp.log(1e-20 + current_Phi
-                                                                  + jnp.array(joint_players == 0, jnp.float32))
-                                                          * joint_players)
+        def negative_expected_log_obs_dens(log_epsilon):
+            epsilon = jnp.exp(log_epsilon)
+            Phi = Phi_emission(update_params[0], epsilon, m)
 
-        return value_negative_expected_log_update
+            value_negative_expected_log_update = 0
+            for t in range(len(match_results)):
+                joint_players = jnp.reshape(match_skills_p1[t], (m, 1)) * jnp.reshape(match_skills_p2[t], (1, m))
+                current_Phi = Phi[:, :, match_results[t]]
 
-    optim_res = minimize(negative_expected_log_obs_dens, update_params[1], method='cobyla')
+                value_negative_expected_log_update -= jnp.sum(jnp.log(1e-20 + current_Phi
+                                                                      + jnp.array(joint_players == 0, jnp.float32))
+                                                              * joint_players)
 
-    assert optim_res.success, 'epsilon optimisation failed'
-    maxed_epsilon = optim_res.x[0]
-    maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
+            return value_negative_expected_log_update
+
+        optim_res = minimize(negative_expected_log_obs_dens, jnp.log(update_params[1]), method='cobyla')
+
+        assert optim_res.success, 'epsilon optimisation failed'
+        maxed_epsilon = jnp.exp(optim_res.x[0])
+        maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
 
     return maxed_initial_params, maxed_tau, maxed_s_and_epsilon
