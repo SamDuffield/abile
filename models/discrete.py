@@ -65,6 +65,57 @@ def CTMC_kernel_reflected(M, tau):
 
     return K_delta_t
 
+# We can get an M^2 filter
+# def filter_CTMC_kernel_reflected(M, tau):
+#     skills_index = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1))
+
+#     omegas = jnp.pi * (skills_index) / (2 * M)
+#     lambdas = jnp.cos(2 * omegas)
+
+#     psi = jnp.sqrt(2 / M) * jnp.cos(jnp.transpose(omegas) * (2 * (skills_index + 1) - 1))
+
+#     psi = psi.at[:, 0].set(psi[:, 0] * jnp.sqrt(1 / 2))
+
+#     def filter_K_delta_t(pi_tm1, delta_t):
+#         time_lamb = (1 - lambdas) * jnp.ones((M, 1))
+#         time_lamb = time_lamb * delta_t
+
+#         time_eye = jnp.eye(M) * jnp.ones((M, M))
+
+#         expLambda = time_eye * jnp.exp(-tau * time_lamb)
+
+#         return jnp.einsum("j,kj->k", jnp.einsum("j,jk->k", jnp.einsum("j,jk->k", pi_tm1, psi), expLambda), psi)
+
+#     return filter_K_delta_t
+
+# We cannot get the joint without getting the transition kernel first
+# def smoother_CTMC_kernel_reflected(M, tau):
+#     skills_index = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1))
+
+#     omegas = jnp.pi * (skills_index) / (2 * M)
+#     lambdas = jnp.cos(2 * omegas)
+
+#     psi = jnp.sqrt(2 / M) * jnp.cos(jnp.transpose(omegas) * (2 * (skills_index + 1) - 1))
+
+#     psi = psi.at[:, 0].set(psi[:, 0] * jnp.sqrt(1 / 2))
+
+#     def smoother_K_delta_t(pi_tm1, smooth_skill_tplus1, delta_t):
+#         time_lamb = (1 - lambdas) * jnp.ones((M, 1))
+#         time_lamb = time_lamb * delta_t
+
+#         time_eye = jnp.eye(M) * jnp.ones((M, M))
+
+#         expLambda = time_eye * jnp.exp(-tau * time_lamb)
+
+#         denominator =  jnp.einsum("j,kj->k", jnp.einsum("j,jk->k", jnp.einsum("j,jk->k", pi_tm1, psi), expLambda), psi)
+#         smooth_normalized = jnp.einsum("j,j->j", 1/denominator, smooth_skill_tplus1)
+
+#         smooth_skill_t = jnp.einsum("j,j->j", jnp.einsum("kj,j->k", psi, jnp.einsum("jk,k->j", expLambda, jnp.einsum("kj,k->j", psi, smooth_normalized))), pi_tm1)
+
+#         return 
+
+#     return smoother_K_delta_t
+
 
 # The emission matrix
 # think about draws
@@ -92,8 +143,10 @@ def propagate(pi_tm1: jnp.ndarray,
               random_key: jnp.ndarray) -> jnp.ndarray:
     skills = pi_tm1.shape[0]
     K_delta_t = CTMC_kernel_reflected(skills, tau)
+    # K_delta_t = filter_CTMC_kernel_reflected(skills, tau)
 
     return jnp.einsum("j,jk->k", pi_tm1, K_delta_t(time_interval))
+    # return K_delta_t(pi_tm1, delta_t)
 
 
 def update(pi_t_tm1_p1: jnp.ndarray,
@@ -176,7 +229,7 @@ def maximiser(times_by_player: Sequence,
         return value_negative_expected_log_propagate
 
     optim_res = minimize(negative_expected_log_propagate, jnp.log(propagate_params), method='cobyla')
-    assert optim_res.success, 'epsilon optimisation failed'
+    assert optim_res.success, 'tau optimisation failed'
     maxed_tau = jnp.exp(optim_res.x[0])
 
     if no_draw_bool:
