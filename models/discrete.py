@@ -228,9 +228,9 @@ def maximiser(times_by_player: Sequence,
 
         return value_negative_expected_log_propagate
 
-    optim_res = minimize(negative_expected_log_propagate, propagate_params, method='cobyla')
+    optim_res = minimize(negative_expected_log_propagate, jnp.log(propagate_params), method='cobyla')
     assert optim_res.success, 'tau optimisation failed'
-    maxed_tau = optim_res.x[0]
+    maxed_tau = jnp.exp(optim_res.x[0])
 
     if no_draw_bool:
         maxed_s_and_epsilon = update_params
