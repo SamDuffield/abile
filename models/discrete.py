@@ -66,27 +66,27 @@ def CTMC_kernel_reflected(M, tau):
     return K_delta_t
 
 # We can get an M^2 filter
-# def filter_CTMC_kernel_reflected(M, tau):
-#     skills_index = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1))
+def filter_CTMC_reflected_Msquared(M, tau):
+    skills_index = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1))
 
-#     omegas = jnp.pi * (skills_index) / (2 * M)
-#     lambdas = jnp.cos(2 * omegas)
+    omegas = jnp.pi * (skills_index) / (2 * M)
+    lambdas = jnp.cos(2 * omegas)
 
-#     psi = jnp.sqrt(2 / M) * jnp.cos(jnp.transpose(omegas) * (2 * (skills_index + 1) - 1))
+    psi = jnp.sqrt(2 / M) * jnp.cos(jnp.transpose(omegas) * (2 * (skills_index + 1) - 1))
 
-#     psi = psi.at[:, 0].set(psi[:, 0] * jnp.sqrt(1 / 2))
+    psi = psi.at[:, 0].set(psi[:, 0] * jnp.sqrt(1 / 2))
 
-#     def filter_K_delta_t(pi_tm1, delta_t):
-#         time_lamb = (1 - lambdas) * jnp.ones((M, 1))
-#         time_lamb = time_lamb * delta_t
+    def filter_K_delta_t(pi_tm1, delta_t):
+        time_lamb = (1 - lambdas) * jnp.ones((M, 1))
+        time_lamb = time_lamb * delta_t
 
-#         time_eye = jnp.eye(M) * jnp.ones((M, M))
+        time_eye = jnp.eye(M) * jnp.ones((M, M))
 
-#         expLambda = time_eye * jnp.exp(-tau * time_lamb)
+        expLambda = time_eye * jnp.exp(-tau * time_lamb)
 
-#         return jnp.einsum("j,kj->k", jnp.einsum("j,jk->k", jnp.einsum("j,jk->k", pi_tm1, psi), expLambda), psi)
+        return jnp.einsum("j,kj->k", jnp.einsum("j,jk->k", jnp.einsum("j,jk->k", pi_tm1, psi), expLambda), psi)
 
-#     return filter_K_delta_t
+    return filter_K_delta_t
 
 # We cannot get the joint without getting the transition kernel first
 # def smoother_CTMC_kernel_reflected(M, tau):
@@ -142,11 +142,12 @@ def propagate(pi_tm1: jnp.ndarray,
               tau: float,
               random_key: jnp.ndarray) -> jnp.ndarray:
     skills = pi_tm1.shape[0]
-    K_delta_t = CTMC_kernel_reflected(skills, tau)
-    # K_delta_t = filter_CTMC_kernel_reflected(skills, tau)
 
-    return jnp.einsum("j,jk->k", pi_tm1, K_delta_t(time_interval))
-    # return K_delta_t(pi_tm1, delta_t)
+    # K_delta_t = CTMC_kernel_reflected(skills, tau)
+    K_delta_t = filter_CTMC_reflected_Msquared(skills, tau)
+
+    # return jnp.einsum("j,jk->k", pi_tm1, K_delta_t(time_interval))
+    return K_delta_t(pi_tm1, time_interval)
 
 
 def update(pi_t_tm1_p1: jnp.ndarray,
