@@ -52,7 +52,7 @@ def sum_log_result_probs(predict_probs):
     return jnp.log(jnp.array([predict_probs[i, sim_results[i]] for i in range(n_matches)])).sum()
 
 
-resolution = 25
+resolution = 2
 init_var_linsp = jnp.linspace(0.01, 6, resolution)
 tau_linsp = jnp.linspace(0.01, 4, resolution)
 
