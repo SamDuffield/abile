@@ -1,6 +1,6 @@
 from typing import Tuple, Any, Sequence, Callable
 
-from jax import numpy as jnp, random, vmap
+from jax import numpy as jnp, jit
 from jax.scipy.stats import norm
 # from jax.scipy.optimize import minimize
 from scipy.optimize import minimize
@@ -8,48 +8,28 @@ from scipy.optimize import minimize
 from filtering import get_basic_filter
 from smoothing import times_and_skills_by_player_to_by_match
 
-# skills.shape = (number of players, size of discrete skill space)
-# match_result in (0 for draw, 1 for p1 victory, 2 for p2 victory)
-# state_initial_params = (initial_distribution,)
-#       initial_distribution = full distribution of unseen player
-# static_propagate_params = (tau,)
-#       tau = rate of dynamics
-# static_update_params = (s, epsilon)
-#       s = standard deviation of performance
-#       epsilon = draw margin
-
 init_time: float = 0.
 
+M: int
+psi = None
+lambdas = None
 
-# Some kernel options we are going to use CTMC_kernel_reflected
-def CTMC_kernel_reflected(M, tau):
+def PSi_computation():
+
+    global psi
+    global lambdas
+
     skills_index = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1))
 
-    # omegas  = np.pi*(skills_index)/(2*M)
-
     omegas = jnp.pi * (skills_index) / (2 * M)
-    # omegas_lambda  = np.pi*(skills_index-1)/(2*M)
     lambdas = jnp.cos(2 * omegas)
 
     psi = jnp.sqrt(2 / M) * jnp.cos(jnp.transpose(omegas) * (2 * (skills_index + 1) - 1))
 
-    # psi[:,0] = psi[:,0]*jnp.sqrt(1/2) #assignment problem
     psi = psi.at[:, 0].set(psi[:, 0] * jnp.sqrt(1 / 2))
 
-    # def K_delta_t(delta_t_input):
-
-    #     delta_t = jnp.reshape(delta_t_input, (len(delta_t_input), 1, 1))
-
-    #     time_lamb = (1-lambdas)*jnp.ones((len(delta_t_input), M, 1))
-    #     time_lamb = time_lamb*delta_t
-
-    #     time_eye = jnp.eye((M))*jnp.ones((len(delta_t_input), M, M))
-
-    #     expLambda = time_eye*jnp.exp(-tau*time_lamb)
-
-    #     K = jnp.einsum("tij,kj->tik", jnp.einsum("ij,tjk->tik", psi, expLambda), psi)
-
-    #     return jnp.abs(K)
+# This M^3 version is used for the smoothing
+def CTMC_kernel_reflected_Mcube(M, tau):
 
     def K_delta_t(delta_t):
         time_lamb = (1 - lambdas) * jnp.ones((M, 1))
@@ -65,16 +45,8 @@ def CTMC_kernel_reflected(M, tau):
 
     return K_delta_t
 
-# We can get an M^2 filter
+# This M^2 version is used for the filtering
 def filter_CTMC_reflected_Msquared(M, tau):
-    skills_index = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1))
-
-    omegas = jnp.pi * (skills_index) / (2 * M)
-    lambdas = jnp.cos(2 * omegas)
-
-    psi = jnp.sqrt(2 / M) * jnp.cos(jnp.transpose(omegas) * (2 * (skills_index + 1) - 1))
-
-    psi = psi.at[:, 0].set(psi[:, 0] * jnp.sqrt(1 / 2))
 
     def filter_K_delta_t(pi_tm1, delta_t):
         time_lamb = (1 - lambdas) * jnp.ones((M, 1))
@@ -88,37 +60,8 @@ def filter_CTMC_reflected_Msquared(M, tau):
 
     return filter_K_delta_t
 
-# We cannot get the joint without getting the transition kernel first
-# def smoother_CTMC_kernel_reflected(M, tau):
-#     skills_index = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1))
-
-#     omegas = jnp.pi * (skills_index) / (2 * M)
-#     lambdas = jnp.cos(2 * omegas)
-
-#     psi = jnp.sqrt(2 / M) * jnp.cos(jnp.transpose(omegas) * (2 * (skills_index + 1) - 1))
-
-#     psi = psi.at[:, 0].set(psi[:, 0] * jnp.sqrt(1 / 2))
-
-#     def smoother_K_delta_t(pi_tm1, smooth_skill_tplus1, delta_t):
-#         time_lamb = (1 - lambdas) * jnp.ones((M, 1))
-#         time_lamb = time_lamb * delta_t
-
-#         time_eye = jnp.eye(M) * jnp.ones((M, M))
-
-#         expLambda = time_eye * jnp.exp(-tau * time_lamb)
-
-#         denominator =  jnp.einsum("j,kj->k", jnp.einsum("j,jk->k", jnp.einsum("j,jk->k", pi_tm1, psi), expLambda), psi)
-#         smooth_normalized = jnp.einsum("j,j->j", 1/denominator, smooth_skill_tplus1)
-
-#         smooth_skill_t = jnp.einsum("j,j->j", jnp.einsum("kj,j->k", psi, jnp.einsum("jk,k->j", expLambda, jnp.einsum("kj,k->j", psi, smooth_normalized))), pi_tm1)
-
-#         return 
-
-#     return smoother_K_delta_t
-
-
 # The emission matrix
-# think about draws
+# @jit
 def Phi_emission(s, epsilon, skills):
     skills_matrix = jnp.reshape(jnp.linspace(0, skills - 1, skills), (skills, 1)) * jnp.ones((1, skills))
     skills_diff = (skills_matrix - jnp.transpose(skills_matrix)) / s
