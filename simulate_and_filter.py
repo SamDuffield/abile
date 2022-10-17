@@ -1,4 +1,5 @@
 from functools import partial
+from time import time
 from jax import numpy as jnp, random, vmap
 import matplotlib.pyplot as plt
 
@@ -41,34 +42,52 @@ filter_sweep_data = partial(filter_sweep,
                             match_results=sim_results,
                             random_key=filter_key)
 
+start = time()
 elo_filter_out = filter_sweep_data(models.elo.filter,
                                    init_player_skills=init_player_skills,
                                    static_propagate_params=None, static_update_params=[1., 1.])
+elo_time = time() - start
+print('Elo time:\t', elo_time)
 
+start = time()
 init_player_skills_and_var = jnp.vstack([init_player_skills, jnp.ones(n_players)]).T
 glicko_filter_out = filter_sweep_data(models.glicko.filter,
                                       init_player_skills=init_player_skills_and_var,
                                       static_propagate_params=[1., 350 ** 2], static_update_params=None)
+glicko_time = time() - start
+print('Glicko time:\t', glicko_time)
 
+
+start = time()
 trueskill_filter_out = filter_sweep_data(models.trueskill.filter,
                                          init_player_skills=init_player_skills_and_var,
                                          static_propagate_params=tau, static_update_params=[s, epsilon])
+trueskill_time = time() - start
+print('Trueskill time:\t', trueskill_time)
 
-n_particles = 100
+n_particles = 1000
+start = time()
 init_player_skills_particles = init_player_skills.reshape(n_players, 1) \
                                + jnp.sqrt(init_var) * random.normal(init_particle_key, shape=(n_players, n_particles))
 lsmc_filter_out = filter_sweep_data(models.lsmc.filter,
                                     init_player_skills=init_player_skills_particles,
                                     static_propagate_params=tau, static_update_params=[s, epsilon])
+lsmc_time = time() - start
+print('LSCMC time:\t', lsmc_time)
 
-initial_distribution_skills = jnp.zeros(10)
+m = 1000
+initial_distribution_skills = jnp.zeros(m)
 initial_distribution_skills = initial_distribution_skills.at[0].set(0.8)
 initial_distribution_skills = initial_distribution_skills.at[1].set(0.2)
+models.discrete.psi_computation(m)
 
+start = time()
 _, initial_distribution_skills_player = models.discrete.initiator(n_players, initial_distribution_skills, rk)
 discrete_filter_out = filter_sweep_data(models.discrete.filter,
                                         init_player_skills=initial_distribution_skills_player,
                                         static_propagate_params=tau, static_update_params=[s, epsilon])
+discrete_time = time() - start
+print('Discrete time:\t', discrete_time)
 
 # Plot results
 bin_width = 0.15
