@@ -1,7 +1,8 @@
-from typing import Tuple, Any, Sequence, Callable
+from typing import Tuple, Any, Union, Sequence, Callable
 
-from jax import numpy as jnp, jit
+from jax import numpy as jnp, random, jit
 from jax.scipy.stats import norm
+from jax.lax import scan
 # from jax.scipy.optimize import minimize
 from scipy.optimize import minimize
 
@@ -202,3 +203,65 @@ def maximiser(times_by_player: Sequence,
         maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
 
     return maxed_initial_params, maxed_tau, maxed_s_and_epsilon
+
+
+def simulate(init_player_times: jnp.ndarray,
+             initial_distribution_skills_player: jnp.ndarray, #log_initial_distribution_skills: jnp.ndarray,
+             match_times: jnp.ndarray,
+             match_player_indices_seq: jnp.ndarray,
+             tau: float,
+             s_and_epsilon: Union[jnp.ndarray, Sequence],
+             start_random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    s, epsilon = s_and_epsilon
+
+    skills    = initial_distribution_skills_player.shape[1] # log_initial_distribution_skills.shape[1]
+    n_players = initial_distribution_skills_player.shape[0]
+
+
+    init_skill_key, random_key = random.split(start_random_key, 2)
+
+    # init_player_skills = random.categorical(init_skill_key, log_initial_distribution_skills, axis =1)
+    init_player_skills = jnp.array([random.choice(init_skill_key, a=jnp.arange(skills), p=initial_distribution_skills_player[i,:]) for i in range(n_players)])
+
+    K_delta_t = filter_CTMC_reflected_Msquared(skills, tau)
+    Phi       = Phi_emission(s, epsilon, skills)
+    
+    def scan_body(carry,
+                  match_ind: int) \
+            -> Tuple[Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
+        player_times, player_skills, int_random_key = carry
+        int_random_key, prop_key_p1, prop_key_p2, match_key = random.split(int_random_key, 4)
+
+        match_time = match_times[match_ind]
+        match_player_indices = match_player_indices_seq[match_ind]
+
+        skill_p1_state = jnp.zeros(skills)
+        skill_p1_state = skill_p1_state.at[player_skills[match_player_indices[0]]].set(1)
+
+        skill_p2_state = jnp.zeros(skills)
+        skill_p2_state = skill_p2_state.at[player_skills[match_player_indices[1]]].set(1)
+
+        skill_prob_p1 = (jnp.abs(K_delta_t(skill_p1_state, match_time - player_times[match_player_indices[0]])))
+        skill_prob_p2 = (jnp.abs(K_delta_t(skill_p2_state, match_time - player_times[match_player_indices[1]])))
+
+        skill_p1 = random.choice(prop_key_p1, a=jnp.arange(skills), p =skill_prob_p1)
+        skill_p2 = random.choice(prop_key_p2, a=jnp.arange(skills), p =skill_prob_p2)
+
+        ps = Phi[skill_p1, skill_p2,:]
+
+        result = random.choice(match_key, a=jnp.arange(3), p=ps)
+
+        new_player_times = player_times.at[match_player_indices].set(match_time)
+        new_player_skills = player_skills.at[match_player_indices[0]].set(skill_p1)
+        new_player_skills = new_player_skills.at[match_player_indices[1]].set(skill_p2)
+
+        return (new_player_times, new_player_skills, int_random_key), \
+               (skill_p1, skill_p2, result)
+
+    _, out_stack = scan(scan_body,
+                        (init_player_times, init_player_skills, random_key),
+                        jnp.arange(len(match_times)))
+
+    out_skills_ind0, out_skills_ind1, results = out_stack
+
+    return out_skills_ind0, out_skills_ind1, results

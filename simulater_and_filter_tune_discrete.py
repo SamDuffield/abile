@@ -12,10 +12,6 @@ rk = random.PRNGKey(0)
 n_players = 50
 n_matches = 1500
 
-init_mean = 0.
-init_var = 5
-tau = 2
-s = 2
 epsilon = 0.
 
 mt_key, mi_key, init_skill_key, sim_key, filter_key, init_particle_key = random.split(rk, 6)
@@ -25,16 +21,33 @@ mi_keys = random.split(mi_key, n_matches)
 match_indices_seq = vmap(lambda rk: random.choice(rk, a=jnp.arange(n_players, ), shape=(2,), replace=False))(mi_keys)
 
 init_player_times = jnp.zeros(n_players)
-init_player_skills = init_mean + jnp.sqrt(init_var) * random.normal(init_skill_key, shape=(n_players,))
+
+models.discrete.M = 100
+models.discrete.PSi_computation()
+
+# log_initial_distribution_skills = -5*jnp.ones(models.discrete.M)
+# log_initial_distribution_skills = log_initial_distribution_skills.at[20:60].set(-2)
+
+initial_distribution_skills = jnp.zeros(models.discrete.M)
+initial_distribution_skills = initial_distribution_skills.at[40:60].set(1/(20))
+
+_, initial_distribution_skills_player = models.discrete.initiator(n_players, initial_distribution_skills, rk)
+
+
+epsilon_disc = 0.
+s_disc = 2
+tau = 25
 
 # Simulate data from trueskill model
-sim_skills_p1, sim_skills_p2, sim_results = models.trueskill.simulate(init_player_times,
-                                                                      init_player_skills,
+sim_skills_p1, sim_skills_p2, sim_results = models.discrete.simulate( init_player_times,
+                                                                      initial_distribution_skills_player,
                                                                       match_times,
                                                                       match_indices_seq,
-                                                                      tau,
-                                                                      [s, epsilon],
+                                                                      jnp.square(tau),
+                                                                      [jnp.square(s_disc), epsilon_disc],
                                                                       sim_key)
+
+
 # Filter (with arbitrary parameters)
 filter_sweep_data = jit(partial(filter_sweep,
                                 init_player_times=jnp.zeros(n_players),
@@ -53,11 +66,11 @@ def sum_log_result_probs(predict_probs):
 
 
 resolution = 20
-s_linsp   = jnp.linspace(0.01, 4, resolution)
-tau_linsp = jnp.linspace(0.01, 4, resolution)
+s_linsp   = jnp.linspace(0.01, 8, resolution)
+tau_linsp = jnp.linspace( 1, 8, resolution)
 
 discrete_s_linsp   = jnp.linspace(2, 6, resolution)
-discrete_tau_linsp = jnp.linspace(10, 40, resolution)
+discrete_tau_linsp = jnp.linspace(10, 60, resolution)
 
 trueskill_mls = jnp.zeros((len(s_linsp), len(tau_linsp)))
 lsmc_mls = jnp.zeros_like(trueskill_mls)
@@ -66,6 +79,9 @@ discrete_mls = jnp.zeros_like(trueskill_mls)
 trueskill_times = jnp.zeros_like(trueskill_mls)
 lsmc_times = jnp.zeros_like(trueskill_mls)
 discrete_times = jnp.zeros_like(trueskill_mls)
+
+init_mean = 0.
+init_var = 5
 
 for i, s_temp in enumerate(s_linsp):
     for j, tau_temp in enumerate(tau_linsp):
@@ -113,33 +129,31 @@ for i, d_s_temp in enumerate(discrete_s_linsp):
         if j==0:
             print(i, j, 'Discrete', discrete_mls[i, j], discrete_times[i, j])
 
-jnp.save('data/trueskill_mls.npy', trueskill_mls)
-jnp.save('data/trueskill_times.npy', trueskill_times)
-jnp.save('data/lsmc_mls.npy', lsmc_mls)
-jnp.save('data/lsmc_times.npy', lsmc_times)
-jnp.save('data/discrete_mls.npy', discrete_mls)
-jnp.save('data/discrete_times.npy', discrete_times)
+jnp.save('data/trueskill_mls_discrete.npy', trueskill_mls)
+jnp.save('data/trueskill_times_discrete.npy', trueskill_times)
+jnp.save('data/lsmc_mls_discrete.npy', lsmc_mls)
+jnp.save('data/lsmc_times_discrete.npy', lsmc_times)
+jnp.save('data/discrete_mls_discrete.npy', discrete_mls)
+jnp.save('data/discrete_times_discrete.npy', discrete_times)
 
 
-trueskill_mls = jnp.load('data/trueskill_mls.npy')
-trueskill_times = jnp.load('data/trueskill_times.npy')
-lsmc_mls = jnp.load('data/lsmc_mls.npy')
-lsmc_times = jnp.load('data/lsmc_times.npy')
-discrete_mls = jnp.load('data/discrete_mls.npy')
-discrete_times = jnp.load('data/discrete_times.npy')
+trueskill_mls = jnp.load('data/trueskill_mls_discrete.npy')
+trueskill_times = jnp.load('data/trueskill_times_discrete.npy')
+lsmc_mls = jnp.load('data/lsmc_mls_discrete.npy')
+lsmc_times = jnp.load('data/lsmc_times_discrete.npy')
+discrete_mls = jnp.load('data/discrete_mls_discrete.npy')
+discrete_times = jnp.load('data/discrete_times_discrete.npy')
 
 
 ts_fig, ts_ax = plt.subplots()
-ts_ax.pcolormesh(tau_linsp, s_linsp, trueskill_mls, vmin = -600)
-ts_ax.scatter(tau, s, c='red', marker='x')
+ts_ax.pcolormesh(tau_linsp, s_linsp, trueskill_mls, vmin = -800)
 ts_ax.set_title('Trueskill')
 ts_ax.set_xlabel('$\\tau$')
 ts_ax.set_ylabel('$s$')
 ts_fig.tight_layout()
 
 lsmc_fig, lsmc_ax = plt.subplots()
-lsmc_ax.pcolormesh(tau_linsp, s_linsp, lsmc_mls, vmin = -600)
-lsmc_ax.scatter(tau, s, c='red', marker='x')
+lsmc_ax.pcolormesh(tau_linsp, s_linsp, lsmc_mls, vmin = -800)
 lsmc_ax.set_title(f'LSMC, N={n_particles}')
 lsmc_ax.set_xlabel('$\\tau$')
 lsmc_ax.set_ylabel('$s$')
@@ -147,7 +161,8 @@ lsmc_fig.tight_layout()
 
 
 discrete_fig, discrete_ax = plt.subplots()
-discrete_ax.pcolormesh(discrete_tau_linsp, discrete_s_linsp, discrete_mls, vmin = -580)
+discrete_ax.pcolormesh(discrete_tau_linsp, discrete_s_linsp, discrete_mls, vmin = -800)
+discrete_ax.scatter(tau, s_disc, c='red', marker='x')
 discrete_ax.set_title(f'Discrete, M={m}')
 discrete_ax.set_xlabel('$\\tau_d$')
 discrete_ax.set_ylabel('$s_d$')
