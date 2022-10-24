@@ -200,23 +200,13 @@ def maximiser(times_by_player: Sequence,
 
 
 def simulate(init_player_times: jnp.ndarray,
-             initial_distribution_skills_player: jnp.ndarray,  # log_initial_distribution_skills: jnp.ndarray,
+             init_player_skills: jnp.ndarray,
              match_times: jnp.ndarray,
              match_player_indices_seq: jnp.ndarray,
              tau: float,
              s_and_epsilon: Union[jnp.ndarray, Sequence],
-             start_random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+             random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     s, epsilon = s_and_epsilon
-
-    n_players = initial_distribution_skills_player.shape[0]
-    initial_distribution_skills_player *= jnp.ones((n_players, M))
-
-    init_skill_key, random_key = random.split(start_random_key, 2)
-
-    # init_player_skills = random.categorical(init_skill_key, log_initial_distribution_skills, axis =1)
-    init_player_skills \
-        = vmap(lambda rk, dist: random.choice(rk, a=jnp.arange(M), p=dist)) \
-        (random.split(init_skill_key, n_players), initial_distribution_skills_player)
 
     Phi = Phi_emission(s, epsilon)
 
