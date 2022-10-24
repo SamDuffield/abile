@@ -145,5 +145,3 @@ discrete_ax.set_title(f'Discrete, M={m}')
 discrete_ax.set_xlabel('$\\tau_d$')
 discrete_ax.set_ylabel('$\\sigma^2_d$')
 discrete_fig.tight_layout()
-
-
