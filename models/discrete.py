@@ -1,6 +1,6 @@
 from typing import Tuple, Any, Union, Sequence, Callable
 
-from jax import numpy as jnp, random, jit
+from jax import numpy as jnp, random, jit, vmap
 from jax.scipy.stats import norm
 from jax.lax import scan
 # from jax.scipy.optimize import minimize
@@ -8,7 +8,6 @@ from scipy.optimize import minimize
 
 from filtering import get_basic_filter
 from smoothing import times_and_skills_by_player_to_by_match
-
 
 init_time: float = 0.
 M: int
@@ -28,40 +27,38 @@ def psi_computation(M_new: int = None):
     lambdas = jnp.cos(2 * omegas)
 
     psi = jnp.sqrt(2 / M) * jnp.cos(jnp.transpose(omegas) * (2 * (skills_index + 1) - 1))
-
     psi = psi.at[:, 0].set(psi[:, 0] * jnp.sqrt(1 / 2))
 
-
-# This M^3 version is used for the smoothing
-def CTMC_kernel_reflected_Mcube(tau):
-    def K_delta_t(delta_t):
-        time_lamb = (1 - lambdas) * jnp.ones((M, 1))
-        time_lamb = time_lamb * delta_t
-
-        time_eye = jnp.eye(M) * jnp.ones((M, M))
-
-        expLambda = time_eye * jnp.exp(-tau * time_lamb)
-
-        K = jnp.einsum("ij,kj->ik", jnp.einsum("ij,jk->ik", psi, expLambda), psi)
-
-        return jnp.abs(K)
-
-    return K_delta_t
+    # skills_index = jnp.arange(M)
+    # omegas = jnp.pi * skills_index / (2 * M)
+    # lambdas = jnp.cos(2 * omegas)
+    #
+    # psi = jnp.sqrt(2 / M) * jnp.cos(jnp.outer(2 * skills_index - 1, omegas))
+    # psi = psi.at[:, 0].set(jnp.sqrt(1 / M))
 
 
-# This M^2 version is used for the filtering
-def filter_CTMC_reflected_Msquared(tau):
-    def filter_K_delta_t(pi_tm1, delta_t):
-        time_lamb = (1 - lambdas) * jnp.ones((M, 1))
-        time_lamb = time_lamb * delta_t
+# This M^3 version is used for the smoothing (outputs transition matrix)
+def K_t_Mcubed(delta_t: float, tau: float) -> jnp.ndarray:
+    time_lamb = (1 - lambdas) * jnp.ones((M, 1))
+    time_lamb = time_lamb * delta_t * tau
 
-        time_eye = jnp.eye(M) * jnp.ones((M, M))
+    expLambda = jnp.eye(M) * jnp.exp(-time_lamb)
 
-        expLambda = time_eye * jnp.exp(-tau * time_lamb)
+    K = jnp.einsum("ij,kj->ik", jnp.einsum("ij,jk->ik", psi, expLambda), psi)
+    # K = psi.T @ expLambda @ psi
 
-        return jnp.einsum("j,kj->k", jnp.einsum("j,jk->k", jnp.einsum("j,jk->k", pi_tm1, psi), expLambda), psi)
+    return jnp.abs(K)
 
-    return filter_K_delta_t
+
+# This M^2 version is used for the filtering (outputs propagated distribution, i.e. vector)
+def K_t_Msquared(pi_tm1: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray:
+    time_lamb = (1 - lambdas) * jnp.ones((M, 1))
+    time_lamb = time_lamb * delta_t * tau
+
+    expLambda = jnp.eye(M) * jnp.exp(-time_lamb)
+
+    return jnp.einsum("j,kj->k", jnp.einsum("j,jk->k", jnp.einsum("j,jk->k", pi_tm1, psi), expLambda), psi)
+    # return psi.T @ (expLambda @ (psi @ pi_tm1))
 
 
 # The emission matrix
@@ -86,8 +83,7 @@ def propagate(pi_tm1: jnp.ndarray,
               time_interval: float,
               tau: float,
               _: Any) -> jnp.ndarray:
-    K_delta_t = filter_CTMC_reflected_Msquared(tau)
-    return K_delta_t(pi_tm1, time_interval)
+    return K_t_Msquared(pi_tm1, time_interval, tau)
 
 
 def update(pi_t_tm1_p1: jnp.ndarray,
@@ -119,12 +115,11 @@ def smoother(filter_skill_t: jnp.ndarray,
              tau: float,
              _: Any) -> Tuple[jnp.ndarray, float]:
     skills = filter_skill_t.shape[0]
-    K_delta_t = CTMC_kernel_reflected_Mcube(tau)
 
     delta_tp1_update = (time_plus1 - time)
 
-    reverse_kernel_numerator = jnp.reshape(filter_skill_t, (skills, 1)) * K_delta_t(delta_tp1_update)
-    reverse_kernel_denominator = jnp.einsum("j,jk->k", filter_skill_t, K_delta_t(delta_tp1_update))
+    reverse_kernel_numerator = jnp.reshape(filter_skill_t, (skills, 1)) * K_t_Mcubed(delta_tp1_update, tau)
+    reverse_kernel_denominator = jnp.einsum("j,jk->k", filter_skill_t, K_t_Mcubed(delta_tp1_update, tau))
     reverse_kernel = reverse_kernel_numerator / jnp.reshape(reverse_kernel_denominator,
                                                             (1, reverse_kernel_denominator.shape[0]))
 
@@ -156,14 +151,13 @@ def maximiser(times_by_player: Sequence,
 
     def negative_expected_log_propagate(log_tau):
         tau = jnp.exp(log_tau)
-        K_delta_t = CTMC_kernel_reflected_Mcube(tau)
         value_negative_expected_log_propagate = 0
         for ind in range(n_players):
             diff_time = (times_by_player[ind][1:] - times_by_player[ind][:-1])
             for t in range(len(joint_smoothing_list[ind])):
                 value_negative_expected_log_propagate \
                     -= (jnp.sum(joint_smoothing_list[ind][t]
-                                * jnp.log(1e-20 + K_delta_t(diff_time[t])
+                                * jnp.log(1e-20 + K_t_Mcubed(diff_time[t], tau)
                                           + jnp.array(joint_smoothing_list[ind][t] == 0, dtype=jnp.float32))))
 
         return value_negative_expected_log_propagate
@@ -206,7 +200,7 @@ def maximiser(times_by_player: Sequence,
 
 
 def simulate(init_player_times: jnp.ndarray,
-             initial_distribution_skills_player: jnp.ndarray, #log_initial_distribution_skills: jnp.ndarray,
+             initial_distribution_skills_player: jnp.ndarray,  # log_initial_distribution_skills: jnp.ndarray,
              match_times: jnp.ndarray,
              match_player_indices_seq: jnp.ndarray,
              tau: float,
@@ -214,18 +208,18 @@ def simulate(init_player_times: jnp.ndarray,
              start_random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     s, epsilon = s_and_epsilon
 
-    skills    = initial_distribution_skills_player.shape[1] # log_initial_distribution_skills.shape[1]
     n_players = initial_distribution_skills_player.shape[0]
-
+    initial_distribution_skills_player *= jnp.ones((n_players, M))
 
     init_skill_key, random_key = random.split(start_random_key, 2)
 
     # init_player_skills = random.categorical(init_skill_key, log_initial_distribution_skills, axis =1)
-    init_player_skills = jnp.array([random.choice(init_skill_key, a=jnp.arange(skills), p=initial_distribution_skills_player[i,:]) for i in range(n_players)])
+    init_player_skills \
+        = vmap(lambda rk, dist: random.choice(rk, a=jnp.arange(M), p=dist)) \
+        (random.split(init_skill_key, n_players), initial_distribution_skills_player)
 
-    K_delta_t = filter_CTMC_reflected_Msquared(skills, tau)
-    Phi       = Phi_emission(s, epsilon, skills)
-    
+    Phi = Phi_emission(s, epsilon)
+
     def scan_body(carry,
                   match_ind: int) \
             -> Tuple[Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
@@ -235,19 +229,19 @@ def simulate(init_player_times: jnp.ndarray,
         match_time = match_times[match_ind]
         match_player_indices = match_player_indices_seq[match_ind]
 
-        skill_p1_state = jnp.zeros(skills)
+        skill_p1_state = jnp.zeros(M)
         skill_p1_state = skill_p1_state.at[player_skills[match_player_indices[0]]].set(1)
 
-        skill_p2_state = jnp.zeros(skills)
+        skill_p2_state = jnp.zeros(M)
         skill_p2_state = skill_p2_state.at[player_skills[match_player_indices[1]]].set(1)
 
-        skill_prob_p1 = (jnp.abs(K_delta_t(skill_p1_state, match_time - player_times[match_player_indices[0]])))
-        skill_prob_p2 = (jnp.abs(K_delta_t(skill_p2_state, match_time - player_times[match_player_indices[1]])))
+        skill_prob_p1 = jnp.abs(K_t_Msquared(skill_p1_state, match_time - player_times[match_player_indices[0]], tau))
+        skill_prob_p2 = jnp.abs(K_t_Msquared(skill_p2_state, match_time - player_times[match_player_indices[1]], tau))
 
-        skill_p1 = random.choice(prop_key_p1, a=jnp.arange(skills), p =skill_prob_p1)
-        skill_p2 = random.choice(prop_key_p2, a=jnp.arange(skills), p =skill_prob_p2)
+        skill_p1 = random.choice(prop_key_p1, a=jnp.arange(M), p=skill_prob_p1)
+        skill_p2 = random.choice(prop_key_p2, a=jnp.arange(M), p=skill_prob_p2)
 
-        ps = Phi[skill_p1, skill_p2,:]
+        ps = Phi[skill_p1, skill_p2, :]
 
         result = random.choice(match_key, a=jnp.arange(3), p=ps)
 
