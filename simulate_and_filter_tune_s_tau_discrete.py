@@ -23,7 +23,7 @@ match_indices_seq = vmap(lambda rk: random.choice(rk, a=jnp.arange(n_players, ),
 init_player_times = jnp.zeros(n_players)
 
 models.discrete.M = 100
-models.discrete.PSi_computation()
+models.discrete.psi_computation()
 
 # log_initial_distribution_skills = -5*jnp.ones(models.discrete.M)
 # log_initial_distribution_skills = log_initial_distribution_skills.at[20:60].set(-2)
