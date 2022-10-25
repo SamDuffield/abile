@@ -85,7 +85,6 @@ def propagate(pi_tm1: jnp.ndarray,
               _: Any) -> jnp.ndarray:
     return K_t_Msquared(pi_tm1, time_interval, tau)
 
-
 def update(pi_t_tm1_p1: jnp.ndarray,
            pi_t_tm1_p2: jnp.ndarray,
            match_result: int,
