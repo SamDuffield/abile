@@ -23,7 +23,7 @@ match_indices_seq = vmap(lambda rk: random.choice(rk, a=jnp.arange(n_players, ),
 init_player_times = jnp.zeros(n_players)
 
 models.discrete.M = 100
-models.discrete.PSi_computation()
+models.discrete.psi_computation()
 
 # log_initial_distribution_skills = -5*jnp.ones(models.discrete.M)
 # log_initial_distribution_skills = log_initial_distribution_skills.at[20:60].set(-2)
@@ -43,7 +43,7 @@ sim_skills_p1, sim_skills_p2, sim_results = models.discrete.simulate( init_playe
                                                                       initial_distribution_skills_player,
                                                                       match_times,
                                                                       match_indices_seq,
-                                                                      jnp.square(tau),
+                                                                      jnp.sqrt(tau),
                                                                       [jnp.square(s_disc), epsilon_disc],
                                                                       sim_key)
 
@@ -65,12 +65,12 @@ def sum_log_result_probs(predict_probs):
     return jnp.log(jnp.array([predict_probs[i, sim_results[i]] for i in range(n_matches)])).sum()
 
 
-resolution = 20
-s_linsp   = jnp.linspace(0.01, 8, resolution)
-tau_linsp = jnp.linspace( 1, 8, resolution)
+resolution = 30
+s_linsp   = jnp.linspace(4, 40, resolution)
+tau_linsp = jnp.linspace( 1, 20, resolution)
 
-discrete_s_linsp   = jnp.linspace(2, 6, resolution)
-discrete_tau_linsp = jnp.linspace(10, 60, resolution)
+discrete_s_linsp   = jnp.linspace(10, 32, resolution)
+discrete_tau_linsp = jnp.linspace(10, 100, resolution)
 
 trueskill_mls = jnp.zeros((len(s_linsp), len(tau_linsp)))
 lsmc_mls = jnp.zeros_like(trueskill_mls)
@@ -146,14 +146,14 @@ discrete_times = jnp.load('data/discrete_times_discrete.npy')
 
 
 ts_fig, ts_ax = plt.subplots()
-ts_ax.pcolormesh(tau_linsp, s_linsp, trueskill_mls, vmin = -800)
+ts_ax.pcolormesh(tau_linsp, s_linsp, trueskill_mls, vmin = -1000)
 ts_ax.set_title('Trueskill')
 ts_ax.set_xlabel('$\\tau$')
 ts_ax.set_ylabel('$s$')
 ts_fig.tight_layout()
 
 lsmc_fig, lsmc_ax = plt.subplots()
-lsmc_ax.pcolormesh(tau_linsp, s_linsp, lsmc_mls, vmin = -800)
+lsmc_ax.pcolormesh(tau_linsp, s_linsp, lsmc_mls, vmin = -1000)
 lsmc_ax.set_title(f'LSMC, N={n_particles}')
 lsmc_ax.set_xlabel('$\\tau$')
 lsmc_ax.set_ylabel('$s$')
@@ -161,7 +161,7 @@ lsmc_fig.tight_layout()
 
 
 discrete_fig, discrete_ax = plt.subplots()
-discrete_ax.pcolormesh(discrete_tau_linsp, discrete_s_linsp, discrete_mls, vmin = -800)
+discrete_ax.pcolormesh(discrete_tau_linsp, discrete_s_linsp, discrete_mls, vmin = -1000)
 discrete_ax.scatter(tau, s_disc, c='red', marker='x')
 discrete_ax.set_title(f'Discrete, M={m}')
 discrete_ax.set_xlabel('$\\tau_d$')

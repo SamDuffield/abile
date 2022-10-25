@@ -65,7 +65,6 @@ def filter_CTMC_reflected_Msquared(tau):
 
 
 # The emission matrix
-@jit
 def Phi_emission(s, epsilon):
     skills_matrix = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1)) * jnp.ones((1, M))
     skills_diff = (skills_matrix - jnp.transpose(skills_matrix)) / s
@@ -82,6 +81,7 @@ def initiator(num_players: int,
     return jnp.zeros(num_players) + init_time, jnp.ones((num_players, M)) * initial_distribution
 
 
+@jit
 def propagate(pi_tm1: jnp.ndarray,
               time_interval: float,
               tau: float,
@@ -89,7 +89,7 @@ def propagate(pi_tm1: jnp.ndarray,
     K_delta_t = filter_CTMC_reflected_Msquared(tau)
     return K_delta_t(pi_tm1, time_interval)
 
-
+@jit
 def update(pi_t_tm1_p1: jnp.ndarray,
            pi_t_tm1_p2: jnp.ndarray,
            match_result: int,
@@ -223,8 +223,8 @@ def simulate(init_player_times: jnp.ndarray,
     # init_player_skills = random.categorical(init_skill_key, log_initial_distribution_skills, axis =1)
     init_player_skills = jnp.array([random.choice(init_skill_key, a=jnp.arange(skills), p=initial_distribution_skills_player[i,:]) for i in range(n_players)])
 
-    K_delta_t = filter_CTMC_reflected_Msquared(skills, tau)
-    Phi       = Phi_emission(s, epsilon, skills)
+    K_delta_t = filter_CTMC_reflected_Msquared(tau)
+    Phi       = Phi_emission(s, epsilon)
     
     def scan_body(carry,
                   match_ind: int) \
