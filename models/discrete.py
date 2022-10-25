@@ -62,7 +62,6 @@ def K_t_Msquared(pi_tm1: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray
 
 
 # The emission matrix
-@jit
 def Phi_emission(s, epsilon):
     skills_matrix = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1)) * jnp.ones((1, M))
     skills_diff = (skills_matrix - jnp.transpose(skills_matrix)) / s
