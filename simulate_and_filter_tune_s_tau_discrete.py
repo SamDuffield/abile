@@ -44,7 +44,7 @@ tau = 25
 
 # Simulate data from trueskill model
 sim_skills_p1, sim_skills_p2, sim_results = models.discrete.simulate( init_player_times,
-                                                                      initial_distribution_skills_player,
+                                                                      sampled_initial_skills,
                                                                       match_times,
                                                                       match_indices_seq,
                                                                       jnp.sqrt(tau),
