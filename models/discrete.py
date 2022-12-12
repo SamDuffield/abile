@@ -73,17 +73,35 @@ def Phi_emission(s, epsilon):
     return jnp.concatenate((1 - phi_vic - phi_los, phi_vic, phi_los), axis=2)
 
 
+# def initiator(num_players: int,
+#               initial_distribution: jnp.ndarray,
+#               _: Any = None) -> Tuple[jnp.ndarray, jnp.ndarray]:
+#     return jnp.zeros(num_players) + init_time, jnp.ones((num_players, M)) * initial_distribution
+
+
 def initiator(num_players: int,
-              initial_distribution: jnp.ndarray,
+              init_rates: jnp.ndarray,
               _: Any = None) -> Tuple[jnp.ndarray, jnp.ndarray]:
-    return jnp.zeros(num_players) + init_time, jnp.ones((num_players, M)) * initial_distribution
+    init_rates = init_rates * jnp.ones(num_players)
+
+    p0 = jnp.zeros(M).at[((M - 1) // 2):((M + 3) // 2)].set(1)
+    p0 /= p0.sum()
+
+    init_dists = vmap(propagate, in_axes=(None, 0, None, None))(p0, init_rates, 1, None)
+
+    return jnp.zeros(num_players) + init_time, init_dists
 
 
 def propagate(pi_tm1: jnp.ndarray,
               time_interval: float,
               tau: float,
               _: Any) -> jnp.ndarray:
-    return K_t_Msquared(pi_tm1, time_interval, tau)
+    prop_dist = K_t_Msquared(pi_tm1, time_interval, tau)
+    min_prob = 1e-10
+    prop_dist = jnp.where(prop_dist < min_prob, min_prob, prop_dist)
+    prop_dist /= prop_dist.sum()
+    return prop_dist
+
 
 def update(pi_t_tm1_p1: jnp.ndarray,
            pi_t_tm1_p2: jnp.ndarray,
@@ -91,17 +109,23 @@ def update(pi_t_tm1_p1: jnp.ndarray,
            s_epsilon: jnp.ndarray,
            _: Any) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     s, epsilon = s_epsilon
-    skills = pi_t_tm1_p1.shape[0]
-    Phi = Phi_emission(s, epsilon)
+    Phi = Phi_emission(s, epsilon)  # possibly we should psi_computation?
 
-    joint = jnp.reshape(pi_t_tm1_p1, (skills, 1, 1)) * Phi * jnp.reshape(pi_t_tm1_p2, (1, skills, 1))
+    joint = jnp.reshape(pi_t_tm1_p1, (M, 1, 1)) * Phi * jnp.reshape(pi_t_tm1_p2, (1, M, 1))
 
     normalization = jnp.sum(joint[:, :, match_result])
 
     pl1 = jnp.sum(joint[:, :, match_result], axis=1) / normalization
     pl2 = jnp.sum(joint[:, :, match_result], axis=0) / normalization
 
+    # min_prob = 1e-10
+    # pl1 = jnp.where(pl1 < min_prob, min_prob, pl1)
+    # pl1 /= pl1.sum()
+    # pl2 = jnp.where(pl2 < min_prob, min_prob, pl2)
+    # pl2 /= pl2.sum()
+
     return pl1, pl2, jnp.sum(jnp.sum(joint, axis=0), axis=0)
+    # return pl1, pl2, joint.sum((0, 1))
 
 
 filter = get_basic_filter(propagate, update)
