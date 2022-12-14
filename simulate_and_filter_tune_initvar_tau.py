@@ -64,7 +64,7 @@ filter_sweep_data = jit(partial(filter_sweep,
 n_particles = 1000
 m = 1000
 models.discrete.psi_computation(m)
-discrete_s = m / 2
+discrete_s = m / 5
 
 
 @jit
@@ -89,7 +89,7 @@ for init_var_temp in init_var_linsp:
 trueskill_init_ax.legend(title='$\\sigma^2$')
 
 # discrete_init_var_linsp = m * jnp.linspace(1e-1, 10., resolution)
-discrete_init_var_linsp = m * 10 ** jnp.linspace(0, 2.5, resolution)
+discrete_init_var_linsp = m * 10 ** jnp.linspace(-1, 2, resolution)
 # discrete_tau_linsp = m / mean_time_between_matches * jnp.linspace(1e-1, 1., resolution)
 discrete_tau_linsp = (m / mean_time_between_matches) * 10 ** jnp.linspace(-5, 2., resolution)
 
@@ -168,36 +168,38 @@ def matrix_argmax(mat):
 
 
 ts_fig, ts_ax = plt.subplots()
-ts_ax.pcolormesh(tau_linsp, init_var_linsp, trueskill_mls)
+ts_ax.pcolormesh(jnp.log10(tau_linsp), jnp.log10(init_var_linsp), trueskill_mls)
 ts_mls_argmax = matrix_argmax(trueskill_mls)
-ts_ax.scatter(tau_linsp[ts_mls_argmax[1]], init_var_linsp[ts_mls_argmax[0]], c='red')
-ts_ax.scatter(tau, init_var, c='green')
+ts_ax.scatter(jnp.log10(tau_linsp[ts_mls_argmax[1]]), jnp.log10(init_var_linsp[ts_mls_argmax[0]]), c='red')
+ts_ax.scatter(jnp.log10(tau), jnp.log10(init_var), c='green')
 ts_ax.set_title('Trueskill')
-ts_ax.set_xlabel('$\\tau$')
-ts_ax.set_ylabel('$\\sigma^2$')
-ts_ax.set_xscale('log')
-ts_ax.set_yscale('log')
+ts_ax.set_xlabel('$\log_{10} \\tau$')
+ts_ax.set_ylabel('$\\log_{10} \sigma^2$')
+# ts_ax.set_xscale('log')
+# ts_ax.set_yscale('log')
 ts_fig.tight_layout()
 
 lsmc_fig, lsmc_ax = plt.subplots()
-lsmc_ax.pcolormesh(tau_linsp, init_var_linsp, lsmc_mls)
+lsmc_ax.pcolormesh(jnp.log10(tau_linsp), jnp.log10(init_var_linsp), lsmc_mls)
 lsmc_mls_argmax = matrix_argmax(lsmc_mls)
-lsmc_ax.scatter(tau_linsp[lsmc_mls_argmax[1]], init_var_linsp[lsmc_mls_argmax[0]], c='red')
-lsmc_ax.scatter(tau, init_var, c='green')
+lsmc_ax.scatter(jnp.log10(tau_linsp[lsmc_mls_argmax[1]]), jnp.log10(init_var_linsp[lsmc_mls_argmax[0]]), c='red')
+lsmc_ax.scatter(jnp.log10(tau), jnp.log10(init_var), c='green')
 lsmc_ax.set_title(f'LSMC, N={n_particles}')
-lsmc_ax.set_xlabel('$\\tau$')
-lsmc_ax.set_ylabel('$\\sigma^2$')
-lsmc_ax.set_xscale('log')
-lsmc_ax.set_yscale('log')
+lsmc_ax.set_xlabel('$\log_{10} \\tau$')
+lsmc_ax.set_ylabel('$\log_{10} \\sigma^2$')
+# lsmc_ax.set_xscale('log')
+# lsmc_ax.set_yscale('log')
 lsmc_fig.tight_layout()
 
 discrete_fig, discrete_ax = plt.subplots()
-discrete_ax.pcolormesh(discrete_tau_linsp, discrete_init_var_linsp, discrete_mls)
+discrete_ax.pcolormesh(jnp.log10(discrete_tau_linsp), jnp.log10(discrete_init_var_linsp), discrete_mls)
 discrete_mls_argmax = matrix_argmax(discrete_mls)
-discrete_ax.scatter(discrete_tau_linsp[discrete_mls_argmax[1]], discrete_init_var_linsp[discrete_mls_argmax[0]], c='red')
-discrete_ax.set_title(f'Discrete, M={m}')
-discrete_ax.set_xlabel('$\\tau_d$')
-discrete_ax.set_ylabel('$\\sigma^2_d$')
-discrete_ax.set_xscale('log')
-discrete_ax.set_yscale('log')
+discrete_ax.scatter(jnp.log10(discrete_tau_linsp[discrete_mls_argmax[1]]),
+                    jnp.log10(discrete_init_var_linsp[discrete_mls_argmax[0]]), c='red')
+discrete_ax.set_title(f'Discrete, M={m}, s=m/{int(m/discrete_s)}')
+discrete_ax.set_xlabel('$\log_{10} \\tau_d$')
+discrete_ax.set_ylabel('$\log_{10} \\sigma^2_d$')
+# discrete_ax.set_xscale('log')
+# discrete_ax.set_yscale('log')
 discrete_fig.tight_layout()
+
