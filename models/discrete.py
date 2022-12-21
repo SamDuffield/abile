@@ -168,9 +168,17 @@ def maximiser(times_by_player: Sequence,
     smoothing_list = [smoother_skills_and_extras_by_player[i][0] for i in range(n_players)]
     joint_smoothing_list = [smoother_skills_and_extras_by_player[i][1] for i in range(n_players)]
 
-    maxed_initial_params = jnp.array([smoothing_list[i][0] for i in range(n_players)]).mean(0)
+    initial_smoothing_dists = jnp.array([smoothing_list[i][0] for i in range(n_players)])
 
-    m = maxed_initial_params.shape[0]
+    def negative_expected_log_intial(log_rate):
+        rate = jnp.exp(log_rate)
+        dist = initiator(1, rate)[1][0]
+        return vmap(lambda log_smooth_initdist: (log_smooth_initdist * dist).sum())(
+            jnp.log(1e-20 + initial_smoothing_dists)).sum()
+
+    optim_res = minimize(negative_expected_log_intial, jnp.log(initial_params), method='cobyla')
+    assert optim_res.success, 'init rate optimisation failed'
+    maxed_initial_params = jnp.exp(optim_res.x[0])
 
     def negative_expected_log_propagate(log_tau):
         tau = jnp.exp(log_tau)
@@ -204,7 +212,7 @@ def maximiser(times_by_player: Sequence,
 
             value_negative_expected_log_update = 0
             for t in range(len(match_results)):
-                joint_players = jnp.reshape(match_skills_p1[t], (m, 1)) * jnp.reshape(match_skills_p2[t], (1, m))
+                joint_players = jnp.reshape(match_skills_p1[t], (M, 1)) * jnp.reshape(match_skills_p2[t], (1, M))
                 current_Phi = Phi[:, :, match_results[t]]
 
                 value_negative_expected_log_update -= jnp.sum(jnp.log(1e-20 + current_Phi

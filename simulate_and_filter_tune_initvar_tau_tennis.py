@@ -70,7 +70,8 @@ filter_sweep_data = jit(partial(filter_sweep,
                                 random_key=filter_key), static_argnums=(0,))
 
 n_particles = 1000
-m = 1000
+models.lsmc.n_particles = n_particles
+m = 500
 models.discrete.psi_computation(m)
 discrete_s = m / 5
 
@@ -161,6 +162,44 @@ jnp.save('data/tennis_lsmc_times.npy', lsmc_times)
 jnp.save('data/tennis_discrete_mls.npy', discrete_mls)
 jnp.save('data/tennis_discrete_times.npy', discrete_times)
 
+
+n_em_steps = 20
+
+ts_em_init_init_var = 10 ** -1.5
+ts_em_init_init_tau = 10 ** -2.0
+
+trueskill_em_out = smoothing.expectation_maximisation(models.trueskill.initiator, models.trueskill.filter,
+                                                      models.trueskill.smoother,
+                                                      models.trueskill.maximiser,
+                                                      [0., ts_em_init_init_var],
+                                                      ts_em_init_init_tau,
+                                                      [s, epsilon],
+                                                      train_match_times, train_match_player_indices,
+                                                      train_match_results,
+                                                      n_em_steps)
+
+lsmc_em_out = smoothing.expectation_maximisation(models.lsmc.initiator, models.lsmc.filter,
+                                                 models.lsmc.smoother,
+                                                 models.lsmc.maximiser,
+                                                 [0., ts_em_init_init_var],
+                                                 ts_em_init_init_tau,
+                                                 [s, epsilon],
+                                                 train_match_times, train_match_player_indices, train_match_results,
+                                                 n_em_steps)
+
+discrete_em_init_init_rate = 10 ** 3.
+discrete_em_init_tau = 10 ** 0.5
+
+discrete_em_out = smoothing.expectation_maximisation(models.discrete.initiator, models.discrete.filter,
+                                                     models.discrete.smoother,
+                                                     models.discrete.maximiser,
+                                                     discrete_em_init_init_rate,
+                                                     discrete_em_init_tau,
+                                                     [discrete_s, epsilon],
+                                                     train_match_times, train_match_player_indices, train_match_results,
+                                                     n_em_steps)
+
+
 trueskill_mls = jnp.load('data/tennis_trueskill_mls.npy')
 trueskill_times = jnp.load('data/tennis_trueskill_times.npy')
 lsmc_mls = jnp.load('data/tennis_lsmc_mls.npy')
@@ -177,6 +216,7 @@ ts_fig, ts_ax = plt.subplots()
 ts_ax.pcolormesh(jnp.log10(tau_linsp), jnp.log10(init_var_linsp), trueskill_mls)
 ts_mls_argmax = matrix_argmax(trueskill_mls)
 ts_ax.scatter(jnp.log10(tau_linsp[ts_mls_argmax[1]]), jnp.log10(init_var_linsp[ts_mls_argmax[0]]), c='red')
+ts_ax.scatter(jnp.log10(trueskill_em_out[1]), jnp.log10(trueskill_em_out[0][:, 1]), c='grey')
 ts_ax.set_title('WTA, Trueskill')
 ts_ax.set_xlabel('$\log_{10} \\tau$')
 ts_ax.set_ylabel('$\\log_{10} \sigma^2$')
@@ -188,6 +228,7 @@ lsmc_fig, lsmc_ax = plt.subplots()
 lsmc_ax.pcolormesh(jnp.log10(tau_linsp), jnp.log10(init_var_linsp), lsmc_mls)
 lsmc_mls_argmax = matrix_argmax(lsmc_mls)
 lsmc_ax.scatter(jnp.log10(tau_linsp[lsmc_mls_argmax[1]]), jnp.log10(init_var_linsp[lsmc_mls_argmax[0]]), c='red')
+lsmc_ax.scatter(jnp.log10(lsmc_em_out[1]), jnp.log10(lsmc_em_out[0][:, 1]), c='grey')
 lsmc_ax.set_title(f'WTA, LSMC, N={n_particles}')
 lsmc_ax.set_xlabel('$\log_{10} \\tau$')
 lsmc_ax.set_ylabel('$\log_{10} \\sigma^2$')
@@ -200,7 +241,7 @@ discrete_ax.pcolormesh(jnp.log10(discrete_tau_linsp), jnp.log10(discrete_init_va
 discrete_mls_argmax = matrix_argmax(discrete_mls)
 discrete_ax.scatter(jnp.log10(discrete_tau_linsp[discrete_mls_argmax[1]]),
                     jnp.log10(discrete_init_var_linsp[discrete_mls_argmax[0]]), c='red')
-discrete_ax.set_title(f'WTA, Discrete, M={m}, s=m/{int(m/discrete_s)}')
+discrete_ax.set_title(f'WTA, Discrete, M={m}, s=m/{int(m / discrete_s)}')
 discrete_ax.set_xlabel('$\log_{10} \\tau_d$')
 discrete_ax.set_ylabel('$\log_{10} \\sigma^2_d$')
 # discrete_ax.set_xscale('log')
@@ -216,5 +257,3 @@ def plot_phi(discrete_s, discrete_m=500):
     plt.plot(skill_diffs, phis)
     plt.xlabel(r'$x_A - x_B$')
     plt.ylabel(r'P($A$ beats $B$)')
-
-
