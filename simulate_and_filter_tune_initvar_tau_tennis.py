@@ -4,6 +4,7 @@ from jax import numpy as jnp, random, vmap, jit
 from jax.scipy.stats import norm
 import matplotlib.pyplot as plt
 import pandas as pd
+import pickle
 
 import models
 import smoothing
@@ -163,10 +164,11 @@ jnp.save('data/tennis_discrete_mls.npy', discrete_mls)
 jnp.save('data/tennis_discrete_times.npy', discrete_times)
 
 
-n_em_steps = 20
+n_em_steps = 100
 
-ts_em_init_init_var = 10 ** -1.5
-ts_em_init_init_tau = 10 ** -2.0
+ts_em_init_init_var = 10 ** -1.75
+ts_em_init_init_tau = 10 ** -1.25
+
 
 trueskill_em_out = smoothing.expectation_maximisation(models.trueskill.initiator, models.trueskill.filter,
                                                       models.trueskill.smoother,
@@ -178,6 +180,11 @@ trueskill_em_out = smoothing.expectation_maximisation(models.trueskill.initiator
                                                       train_match_results,
                                                       n_em_steps)
 
+
+with open('data/tennis_trueskill_em.pickle', 'wb') as f:
+    pickle.dump(trueskill_em_out, f)
+
+
 lsmc_em_out = smoothing.expectation_maximisation(models.lsmc.initiator, models.lsmc.filter,
                                                  models.lsmc.smoother,
                                                  models.lsmc.maximiser,
@@ -186,6 +193,10 @@ lsmc_em_out = smoothing.expectation_maximisation(models.lsmc.initiator, models.l
                                                  [s, epsilon],
                                                  train_match_times, train_match_player_indices, train_match_results,
                                                  n_em_steps)
+
+with open('data/tennis_lsmc_em.pickle', 'wb') as f:
+    pickle.dump(lsmc_em_out, f)
+
 
 discrete_em_init_init_rate = 10 ** 3.
 discrete_em_init_tau = 10 ** 0.5
@@ -199,6 +210,10 @@ discrete_em_out = smoothing.expectation_maximisation(models.discrete.initiator, 
                                                      train_match_times, train_match_player_indices, train_match_results,
                                                      n_em_steps)
 
+with open('data/tennis_discrete_em.pickle', 'wb') as f:
+    pickle.dump(discrete_em_out, f)
+
+
 
 trueskill_mls = jnp.load('data/tennis_trueskill_mls.npy')
 trueskill_times = jnp.load('data/tennis_trueskill_times.npy')
@@ -207,6 +222,15 @@ lsmc_times = jnp.load('data/tennis_lsmc_times.npy')
 discrete_mls = jnp.load('data/tennis_discrete_mls.npy')
 discrete_times = jnp.load('data/tennis_discrete_times.npy')
 
+with open('data/tennis_trueskill_em.pickle', 'rb') as f:
+    trueskill_em_out = pickle.load(f)
+
+
+with open('data/tennis_lsmc_em.pickle', 'rb') as f:
+    lsmc_em_out = pickle.load(f)
+
+with open('data/tennis_discrete_em.pickle', 'rb') as f:
+    discrete_em_out = pickle.load(f)
 
 def matrix_argmax(mat):
     return jnp.unravel_index(mat.argmax(), mat.shape)
@@ -241,6 +265,7 @@ discrete_ax.pcolormesh(jnp.log10(discrete_tau_linsp), jnp.log10(discrete_init_va
 discrete_mls_argmax = matrix_argmax(discrete_mls)
 discrete_ax.scatter(jnp.log10(discrete_tau_linsp[discrete_mls_argmax[1]]),
                     jnp.log10(discrete_init_var_linsp[discrete_mls_argmax[0]]), c='red')
+discrete_ax.scatter(jnp.log10(discrete_em_out[1]), jnp.log10(discrete_em_out[0]), c='grey')
 discrete_ax.set_title(f'WTA, Discrete, M={m}, s=m/{int(m / discrete_s)}')
 discrete_ax.set_xlabel('$\log_{10} \\tau_d$')
 discrete_ax.set_ylabel('$\log_{10} \\sigma^2_d$')
