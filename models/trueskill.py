@@ -153,8 +153,11 @@ def smoother(filter_skill_t: jnp.ndarray,
     smooth_t_mu = filter_t_mu + kalman_gain * (smooth_tp1_mu - filter_t_mu)
     smooth_t_var = filter_t_var + kalman_gain * (smooth_tp1_var - filter_t_var - propagate_var) * kalman_gain
 
-    e_xt_xtp1 = filter_t_mu * smooth_tp1_mu \
-                + kalman_gain * (smooth_tp1_var + (smooth_tp1_mu - filter_t_mu) * smooth_tp1_mu)
+    # e_xt_xtp1 = filter_t_mu * smooth_tp1_mu \
+    #             + kalman_gain * (smooth_tp1_var + (smooth_tp1_mu - filter_t_mu) * smooth_tp1_mu)
+
+    e_xt_xtp1 = smooth_t_mu * smooth_tp1_mu + kalman_gain * smooth_tp1_var
+
     return jnp.array([smooth_t_mu, smooth_t_var]), e_xt_xtp1
 
 
@@ -229,7 +232,6 @@ def maximiser(times_by_player: Sequence,
               update_params: jnp.ndarray,
               i: int,
               random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-
     no_draw_bool = (update_params[1] == 0.) and (0 not in match_results)
 
     times_by_player_clean = [t for t in times_by_player if len(t) > 1]
@@ -237,7 +239,7 @@ def maximiser(times_by_player: Sequence,
     init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player_clean])
     max_init_mean = initial_params[0]
     init_var_num = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
-                    - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).sum()\
+                    - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).sum() \
                    + 2 * init_var_inv_prior_beta
     init_var_denom = len(init_smoothing_skills) + 2 * (init_var_inv_prior_alpha - 1)
     max_init_var = init_var_num / init_var_denom
@@ -274,7 +276,7 @@ def maximiser(times_by_player: Sequence,
             elogp_all = jnp.array([elogp_draw, elogp_vp1, elogp_vp2])
             elogp = jnp.array([e[m] for e, m in zip(elogp_all.T, match_results)])
             return - (elogp.mean() + ((epsilon_prior_alpha - 1) * log_epsilon[0]
-                      - epsilon_prior_beta * jnp.exp(log_epsilon[0])) / len(match_results))
+                                      - epsilon_prior_beta * jnp.exp(log_epsilon[0])) / len(match_results))
 
         optim_result = minimize(negative_expected_log_obs_dens, jnp.log(update_params[-1:]), method='cobyla')
 
@@ -327,7 +329,7 @@ def simulate(init_player_times: jnp.ndarray,
         new_player_skills = new_player_skills.at[match_player_indices[1]].set(skill_p2)
 
         return (new_player_times, new_player_skills, int_random_key), \
-               (skill_p1, skill_p2, result)
+            (skill_p1, skill_p2, result)
 
     _, out_stack = scan(scan_body,
                         (init_player_times, init_player_skills, random_key),
