@@ -74,8 +74,8 @@ resolution = 30
 s_linsp   = jnp.linspace(4, 40, resolution)
 tau_linsp = jnp.linspace( 1, 20, resolution)
 
-discrete_s_linsp   = jnp.linspace(10, 32, resolution)
-discrete_tau_linsp = jnp.linspace(10, 100, resolution)
+discrete_s_linsp   = jnp.linspace(0, 32, resolution)
+discrete_tau_linsp = jnp.linspace(0, 100, resolution)
 
 
 trueskill_mls = jnp.zeros((len(s_linsp), len(tau_linsp)))
