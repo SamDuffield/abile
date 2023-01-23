@@ -61,6 +61,28 @@ def K_t_Msquared(pi_tm1: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray
     # return psi.T @ (expLambda @ (psi @ pi_tm1))
 
 
+# This M^2 version is used for the smoothing (outputs propagated distribution, i.e. vector)
+@jit
+def rev_K_t_Msquare(norm_pi_t_T: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray:
+    time_lamb = (1 - lambdas) * jnp.ones((M, 1))
+    time_lamb = time_lamb * delta_t * tau
+
+    expLambda = jnp.eye(M) * jnp.exp(-time_lamb)
+
+    return jnp.einsum("kj,j->k", psi, jnp.einsum("kj,j->k", expLambda, jnp.einsum("jk,j->k", psi, norm_pi_t_T)))
+
+# This M^2 version is used for the smoothing (outputs propagated distribution, i.e. vector)
+@jit
+def grad_K_t_Msquare(norm_pi_t_T: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray:
+    time_lamb = (1 - lambdas) * jnp.ones((M, 1))
+    time_lamb = time_lamb * delta_t * tau
+
+    expLambda = jnp.eye(M) * jnp.exp(-time_lamb)
+    Lambda = jnp.eye(M) * (1 - lambdas) * jnp.ones((M, 1))
+
+    return jnp.einsum("kj,j->k", psi, jnp.einsum("kj,j->k", Lambda, jnp.einsum("kj,j->k", expLambda, jnp.einsum("jk,j->k", psi, norm_pi_t_T))))
+
+
 # The emission matrix
 @jit
 def Phi_emission(s, epsilon):
@@ -130,8 +152,8 @@ def update(pi_t_tm1_p1: jnp.ndarray,
 
 filter = get_basic_filter(propagate, update)
 
-
-def smoother(filter_skill_t: jnp.ndarray,
+@jit
+def smootherM3(filter_skill_t: jnp.ndarray,
              time: float,
              smooth_skill_tplus1: jnp.ndarray,
              time_plus1: float,
@@ -150,6 +172,42 @@ def smoother(filter_skill_t: jnp.ndarray,
     joint_pi_t_T = jnp.einsum("j,kj->kj", smooth_skill_tplus1, reverse_kernel)
 
     return pi_t_T_update, joint_pi_t_T
+
+@jit
+def smoother(filter_skill_t: jnp.ndarray,
+             time: float,
+             smooth_skill_tplus1: jnp.ndarray,
+             time_plus1: float,
+             tau: float,
+             _: Any) -> Tuple[jnp.ndarray, float]:
+    skills = filter_skill_t.shape[0]
+
+    delta_tp1_update = (time_plus1 - time)
+
+    pred_t = K_t_Msquared(filter_skill_t, delta_tp1_update, tau)
+    norm_pi_t_T = smooth_skill_tplus1/pred_t
+
+    pi_t_T_update = rev_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau)*filter_skill_t
+    grad = jnp.sum(grad_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau)*filter_skill_t)
+
+    return pi_t_T_update, grad
+
+def grad_tau(filter_skill_t: jnp.ndarray,
+             time: float,
+             smooth_skill_tplus1: jnp.ndarray,
+             time_plus1: float,
+             tau: float,
+             _: Any) -> Tuple[jnp.ndarray, float]:
+    skills = filter_skill_t.shape[0]
+
+    delta_tp1_update = (time_plus1 - time)
+
+    pred_t = K_t_Msquared(filter_skill_t, delta_tp1_update, tau)
+    norm_pi_t_T = smooth_skill_tplus1/pred_t
+
+    grad = jnp.sum(grad_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau)*filter_skill_t)
+
+    return grad
 
 
 def maximiser(times_by_player: Sequence,
