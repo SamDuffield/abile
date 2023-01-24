@@ -13,6 +13,7 @@ init_time: float = 0.
 M: int
 psi: jnp.ndarray
 lambdas: jnp.ndarray
+grad_step_size: float = 1e-3
 
 
 def psi_computation(M_new: int = None):
@@ -52,35 +53,32 @@ def K_t_Mcubed(delta_t: float, tau: float) -> jnp.ndarray:
 
 # This M^2 version is used for the filtering (outputs propagated distribution, i.e. vector)
 def K_t_Msquared(pi_tm1: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray:
-    time_lamb = (1 - lambdas) * jnp.ones((M, 1))
+    time_lamb = (1 - lambdas)
     time_lamb = time_lamb * delta_t * tau
 
-    expLambda = jnp.eye(M) * jnp.exp(-time_lamb)
+    # expLambda = jnp.eye(M) * jnp.exp(-time_lamb)
 
-    return jnp.einsum("j,kj->k", jnp.einsum("j,jk->k", jnp.einsum("j,jk->k", pi_tm1, psi), expLambda), psi)
+    return jnp.einsum("j,kj->k", jnp.einsum("j,jk->k", pi_tm1, psi)*jnp.exp(-time_lamb[:,0]), psi)
     # return psi.T @ (expLambda @ (psi @ pi_tm1))
 
 
 # This M^2 version is used for the smoothing (outputs propagated distribution, i.e. vector)
 @jit
 def rev_K_t_Msquare(norm_pi_t_T: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray:
-    time_lamb = (1 - lambdas) * jnp.ones((M, 1))
+    time_lamb = (1 - lambdas)
     time_lamb = time_lamb * delta_t * tau
 
-    expLambda = jnp.eye(M) * jnp.exp(-time_lamb)
-
-    return jnp.einsum("kj,j->k", psi, jnp.einsum("kj,j->k", expLambda, jnp.einsum("jk,j->k", psi, norm_pi_t_T)))
+    return jnp.einsum("kj,j->k", psi, jnp.exp(-time_lamb[:,0])*jnp.einsum("jk,j->k", psi, norm_pi_t_T))
 
 # This M^2 version is used for the smoothing (outputs propagated distribution, i.e. vector)
 @jit
 def grad_K_t_Msquare(norm_pi_t_T: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray:
-    time_lamb = (1 - lambdas) * jnp.ones((M, 1))
+    time_lamb = (1 - lambdas)
     time_lamb = time_lamb * delta_t * tau
 
-    expLambda = jnp.eye(M) * jnp.exp(-time_lamb)
-    Lambda = jnp.eye(M) * (1 - lambdas) * jnp.ones((M, 1))
+    Lambda_expLambda = (delta_t * (1 - lambdas) * jnp.exp(-time_lamb))
 
-    return jnp.einsum("kj,j->k", psi, jnp.einsum("kj,j->k", Lambda, jnp.einsum("kj,j->k", expLambda, jnp.einsum("jk,j->k", psi, norm_pi_t_T))))
+    return jnp.einsum("kj,j->k", psi, Lambda_expLambda[:,0]*jnp.einsum("jk,j->k", psi, norm_pi_t_T))
 
 
 # The emission matrix
@@ -190,6 +188,10 @@ def smoother(filter_skill_t: jnp.ndarray,
     pi_t_T_update = rev_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau)*filter_skill_t
     grad = jnp.sum(grad_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau)*filter_skill_t)
 
+    min_prob = 1e-10
+    pi_t_T_update = jnp.where(pi_t_T_update < min_prob, min_prob, pi_t_T_update)
+    pi_t_T_update /= pi_t_T_update.sum()
+
     return pi_t_T_update, grad
 
 def grad_tau(filter_skill_t: jnp.ndarray,
@@ -224,36 +226,23 @@ def maximiser(times_by_player: Sequence,
     n_players = len(smoother_skills_and_extras_by_player)
 
     smoothing_list = [smoother_skills_and_extras_by_player[i][0] for i in range(n_players)]
-    joint_smoothing_list = [smoother_skills_and_extras_by_player[i][1] for i in range(n_players)]
+    grad_smoothing_list = [smoother_skills_and_extras_by_player[i][1] for i in range(n_players)]
 
     initial_smoothing_dists = jnp.array([smoothing_list[i][0] for i in range(n_players)])
 
     def negative_expected_log_intial(log_rate):
         rate = jnp.exp(log_rate)
-        dist = initiator(1, rate)[1][0]
-        return vmap(lambda log_smooth_initdist: (log_smooth_initdist * dist).sum())(
-            jnp.log(1e-20 + initial_smoothing_dists)).sum()
+        _, initial_distribution_skills_player = initiator(n_players, rate, None)
+
+        return -jnp.sum(jnp.log(initial_distribution_skills_player)*initial_smoothing_dists)
 
     optim_res = minimize(negative_expected_log_intial, jnp.log(initial_params), method='cobyla')
     assert optim_res.success, 'init rate optimisation failed'
     maxed_initial_params = jnp.exp(optim_res.x[0])
 
-    def negative_expected_log_propagate(log_tau):
-        tau = jnp.exp(log_tau)
-        value_negative_expected_log_propagate = 0
-        for ind in range(n_players):
-            diff_time = (times_by_player[ind][1:] - times_by_player[ind][:-1])
-            for t in range(len(joint_smoothing_list[ind])):
-                value_negative_expected_log_propagate \
-                    -= (jnp.sum(joint_smoothing_list[ind][t]
-                                * jnp.log(1e-20 + K_t_Mcubed(diff_time[t], tau)
-                                          + jnp.array(joint_smoothing_list[ind][t] == 0, dtype=jnp.float32))))
+    tau_grad = jnp.sum(jnp.array([jnp.sum(grad_smoothing_list[player_num]) for player_num in range(len(grad_smoothing_list))]))
 
-        return value_negative_expected_log_propagate
-
-    optim_res = minimize(negative_expected_log_propagate, jnp.log(propagate_params), method='cobyla')
-    assert optim_res.success, 'tau optimisation failed'
-    maxed_tau = jnp.exp(optim_res.x[0])
+    maxed_tau = propagate_params + grad_step_size*tau_grad
 
     if no_draw_bool:
         maxed_s_and_epsilon = update_params
