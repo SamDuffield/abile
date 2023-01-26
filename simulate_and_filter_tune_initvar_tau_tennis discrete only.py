@@ -111,7 +111,7 @@ for i, d_init_var_temp in enumerate(discrete_init_var_linsp):
         print(i, j, 'Discrete', discrete_mls[i, j], discrete_times[i, j])
 
 
-n_em_steps = 20
+n_em_steps = 10
 
 
 # discrete_em_init_init_rate = 10 ** 3.
@@ -120,11 +120,10 @@ n_em_steps = 20
 
 # Does tau tune? Init at optimal init_rate
 discrete_em_init_init_rate = 10 ** 2.
-# discrete_em_init_tau = 10 ** 2.
 discrete_em_init_tau = 10 ** 0.
 
-discrete_em_init_init_rate = 10 ** 1.2
-discrete_em_init_tau = 10 ** -2
+# discrete_em_init_init_rate = 10 ** 1.2
+# discrete_em_init_tau = 10 ** -2
 
 
 # # Does init_rate tune? Init at good tau
@@ -142,6 +141,16 @@ discrete_em_out = smoothing.expectation_maximisation(models.discrete.initiator, 
                                                      [discrete_s, epsilon],
                                                      train_match_times, train_match_player_indices, train_match_results,
                                                      n_em_steps)
+                                                     
+discrete_em_out_m3 = smoothing.expectation_maximisation(models.discrete.initiator, models.discrete.filter,
+                                                        models.discrete.smootherM3,
+                                                        models.discrete.maximiserM3,
+                                                        discrete_em_init_init_rate,
+                                                        discrete_em_init_tau,
+                                                        [discrete_s, epsilon],
+                                                        train_match_times, train_match_player_indices, train_match_results,
+                                                        n_em_steps)
+
 
 # with open('data/tennis_discrete_em.pickle', 'wb') as f:
 #     pickle.dump(discrete_em_out, f)
