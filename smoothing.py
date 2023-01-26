@@ -149,7 +149,7 @@ def expectation_maximisation(initiator: Callable,
         result_probs = jnp.array([filter_pred[i, k] for i, k in enumerate(match_results)])
         if verbose:
             print(f'Step {i + 1}/{n_steps}, \t Average prediction of result: {result_probs.mean():.3f},'
-                  f'\t log p(y): {jnp.log(result_probs).sum()}:.3f')
+                  f'\t log p(y): {jnp.log(result_probs).sum():.3f}')
 
         times_by_player, filter_skills_by_player = times_and_skills_by_match_to_by_player(init_times,
                                                                                           init_skills,

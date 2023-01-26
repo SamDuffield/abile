@@ -11,6 +11,9 @@ from smoothing import times_and_skills_by_player_to_by_match
 
 init_time: float = 0.
 M: int
+grad_step_size: float = 1e-3
+min_prob: float = 1e-10
+
 psi: jnp.ndarray
 lambdas: jnp.ndarray
 
@@ -52,13 +55,30 @@ def K_t_Mcubed(delta_t: float, tau: float) -> jnp.ndarray:
 
 # This M^2 version is used for the filtering (outputs propagated distribution, i.e. vector)
 def K_t_Msquared(pi_tm1: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray:
-    time_lamb = (1 - lambdas) * jnp.ones((M, 1))
+    time_lamb = (1 - lambdas)
     time_lamb = time_lamb * delta_t * tau
 
-    expLambda = jnp.eye(M) * jnp.exp(-time_lamb)
+    # expLambda = jnp.eye(M) * jnp.exp(-time_lamb)
 
-    return jnp.einsum("j,kj->k", jnp.einsum("j,jk->k", jnp.einsum("j,jk->k", pi_tm1, psi), expLambda), psi)
+    return jnp.einsum("j,kj->k", jnp.einsum("j,jk->k", pi_tm1, psi)*jnp.exp(-time_lamb[:,0]), psi)
     # return psi.T @ (expLambda @ (psi @ pi_tm1))
+
+
+# This M^2 version is used for the smoothing (outputs propagated distribution, i.e. vector)
+def rev_K_t_Msquare(norm_pi_t_T: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray:
+    time_lamb = (1 - lambdas)
+    time_lamb = time_lamb * delta_t * tau
+
+    return jnp.einsum("kj,j->k", psi, jnp.exp(-time_lamb[:,0])*jnp.einsum("jk,j->k", psi, norm_pi_t_T))
+
+
+def grad_K_t_Msquare(norm_pi_t_T: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray:
+    time_lamb = (1 - lambdas)
+    time_lamb = time_lamb * delta_t * tau
+
+    Lambda_expLambda = -(delta_t * (1 - lambdas) * jnp.exp(-time_lamb))
+
+    return jnp.einsum("kj,j->k", psi, Lambda_expLambda[:,0]*jnp.einsum("jk,j->k", psi, norm_pi_t_T))
 
 
 # The emission matrix
@@ -71,12 +91,6 @@ def Phi_emission(s, epsilon):
     phi_los = jnp.reshape(1 - norm.cdf(skills_diff + epsilon / s), (M, M, 1))
 
     return jnp.concatenate((1 - phi_vic - phi_los, phi_vic, phi_los), axis=2)
-
-
-# def initiator(num_players: int,
-#               initial_distribution: jnp.ndarray,
-#               _: Any = None) -> Tuple[jnp.ndarray, jnp.ndarray]:
-#     return jnp.zeros(num_players) + init_time, jnp.ones((num_players, M)) * initial_distribution
 
 
 def initiator(num_players: int,
@@ -97,7 +111,6 @@ def propagate(pi_tm1: jnp.ndarray,
               tau: float,
               _: Any) -> jnp.ndarray:
     prop_dist = K_t_Msquared(pi_tm1, time_interval, tau)
-    min_prob = 1e-10
     prop_dist = jnp.where(prop_dist < min_prob, min_prob, prop_dist)
     prop_dist /= prop_dist.sum()
     return prop_dist
@@ -118,7 +131,6 @@ def update(pi_t_tm1_p1: jnp.ndarray,
     pl1 = jnp.sum(joint[:, :, match_result], axis=1) / normalization
     pl2 = jnp.sum(joint[:, :, match_result], axis=0) / normalization
 
-    # min_prob = 1e-10
     # pl1 = jnp.where(pl1 < min_prob, min_prob, pl1)
     # pl1 /= pl1.sum()
     # pl2 = jnp.where(pl2 < min_prob, min_prob, pl2)
@@ -131,28 +143,123 @@ def update(pi_t_tm1_p1: jnp.ndarray,
 filter = get_basic_filter(propagate, update)
 
 
+def smootherM3(filter_skill_t: jnp.ndarray,
+             time: float,
+             smooth_skill_tplus1: jnp.ndarray,
+             time_plus1: float,
+             tau: float,
+             _: Any) -> Tuple[jnp.ndarray, float]:
+    delta_tp1_update = (time_plus1 - time)
+
+    reverse_kernel_numerator = jnp.reshape(filter_skill_t, (M, 1)) * K_t_Mcubed(delta_tp1_update, tau)
+    reverse_kernel_denominator = jnp.einsum("j,jk->k", filter_skill_t, K_t_Mcubed(delta_tp1_update, tau))
+    reverse_kernel_denominator = reverse_kernel_denominator.reshape(1, reverse_kernel_denominator.shape[0])
+    reverse_kernel = reverse_kernel_numerator / reverse_kernel_denominator
+
+    reverse_kernel = jnp.where(reverse_kernel_numerator <= min_prob, min_prob, reverse_kernel)
+    reverse_kernel = jnp.where(reverse_kernel_denominator <= min_prob, min_prob, reverse_kernel)
+
+    pi_t_T_update = jnp.einsum("j,kj->k", smooth_skill_tplus1, reverse_kernel)
+    joint_pi_t_T = jnp.einsum("j,kj->kj", smooth_skill_tplus1, reverse_kernel)
+
+    joint_pi_t_T = jnp.where(joint_pi_t_T < min_prob, min_prob, joint_pi_t_T)
+    joint_pi_t_T /= joint_pi_t_T.sum()
+
+    pi_t_T_update = jnp.where(pi_t_T_update < min_prob, min_prob, pi_t_T_update)
+    pi_t_T_update /= pi_t_T_update.sum()
+
+    return pi_t_T_update, joint_pi_t_T
+
+
 def smoother(filter_skill_t: jnp.ndarray,
              time: float,
              smooth_skill_tplus1: jnp.ndarray,
              time_plus1: float,
              tau: float,
              _: Any) -> Tuple[jnp.ndarray, float]:
-    skills = filter_skill_t.shape[0]
-
     delta_tp1_update = (time_plus1 - time)
 
-    reverse_kernel_numerator = jnp.reshape(filter_skill_t, (skills, 1)) * K_t_Mcubed(delta_tp1_update, tau)
-    reverse_kernel_denominator = jnp.einsum("j,jk->k", filter_skill_t, K_t_Mcubed(delta_tp1_update, tau))
-    reverse_kernel = reverse_kernel_numerator / jnp.reshape(reverse_kernel_denominator,
-                                                            (1, reverse_kernel_denominator.shape[0]))
+    pred_t = propagate(filter_skill_t, delta_tp1_update, tau, None)
+    norm_pi_t_T = smooth_skill_tplus1/pred_t
+    norm_pi_t_T = jnp.where(smooth_skill_tplus1 <= min_prob, min_prob, norm_pi_t_T)
+    norm_pi_t_T = jnp.where(pred_t <= min_prob, min_prob, norm_pi_t_T)
 
-    pi_t_T_update = jnp.einsum("j,kj->k", smooth_skill_tplus1, reverse_kernel)
-    joint_pi_t_T = jnp.einsum("j,kj->kj", smooth_skill_tplus1, reverse_kernel)
+    pi_t_T_update = rev_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau)*filter_skill_t
+    grad = jnp.sum(grad_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau)*filter_skill_t)
 
-    return pi_t_T_update, joint_pi_t_T
+    pi_t_T_update = jnp.where(pi_t_T_update < min_prob, min_prob, pi_t_T_update)
+    pi_t_T_update /= pi_t_T_update.sum()
+
+    return pi_t_T_update, grad
 
 
 def maximiser(times_by_player: Sequence,
+              smoother_skills_and_extras_by_player: Sequence,
+              match_player_indices_seq: jnp.ndarray,
+              match_results: jnp.ndarray,
+              initial_params: jnp.ndarray,
+              propagate_params: jnp.ndarray,
+              update_params: jnp.ndarray,
+              i: int,
+              random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    no_draw_bool = (update_params[1] == 0.) and (0 not in match_results)
+
+    n_players = len(smoother_skills_and_extras_by_player)
+
+    smoothing_list = [smoother_skills_and_extras_by_player[i][0] for i in range(n_players)]
+    grad_smoothing_list = [smoother_skills_and_extras_by_player[i][1] for i in range(n_players)]
+
+    initial_smoothing_dists = jnp.array([smoothing_list[i][0] for i in range(n_players)])
+
+    def negative_expected_log_intial(log_rate):
+        rate = jnp.exp(log_rate)
+        _, initial_distribution_skills_player = initiator(n_players, rate, None)
+
+        return -jnp.sum(jnp.log(initial_distribution_skills_player)*initial_smoothing_dists)
+
+    optim_res = minimize(negative_expected_log_intial, jnp.log(initial_params), method='cobyla')
+    assert optim_res.success, 'init rate optimisation failed'
+    maxed_initial_params = jnp.exp(optim_res.x[0])
+
+    tau_grad = jnp.sum(jnp.array([jnp.sum(grad_smoothing_list[player_num]) for player_num in range(len(grad_smoothing_list))]))
+
+    maxed_tau = jnp.exp(jnp.log(propagate_params) + grad_step_size * tau_grad * propagate_params)   # gradient ascent in log space
+
+    if no_draw_bool:
+        maxed_s_and_epsilon = update_params
+    else:
+        smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player]
+
+        match_times, match_skills_p1, match_skills_p2 = times_and_skills_by_player_to_by_match(times_by_player,
+                                                                                               smoother_skills_by_player,
+                                                                                               match_player_indices_seq)
+
+        def negative_expected_log_obs_dens(log_epsilon):
+            epsilon = jnp.exp(log_epsilon)
+            Phi = Phi_emission(update_params[0], epsilon)
+
+            value_negative_expected_log_update = 0
+            for t in range(len(match_results)):
+                joint_players = jnp.reshape(match_skills_p1[t], (M, 1)) * jnp.reshape(match_skills_p2[t], (1, M))
+                current_Phi = Phi[:, :, match_results[t]]
+
+                value_negative_expected_log_update -= jnp.sum(jnp.log(1e-20 + current_Phi
+                                                                      + jnp.array(joint_players == 0, jnp.float32))
+                                                              * joint_players)
+
+            return value_negative_expected_log_update
+
+        optim_res = minimize(negative_expected_log_obs_dens, jnp.log(update_params[1]), method='cobyla')
+
+        assert optim_res.success, 'epsilon optimisation failed'
+        maxed_epsilon = jnp.exp(optim_res.x[0])
+        maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
+
+    return maxed_initial_params, maxed_tau, maxed_s_and_epsilon
+
+
+# Use with smootherM3
+def maximiserM3(times_by_player: Sequence,
               smoother_skills_and_extras_by_player: Sequence,
               match_player_indices_seq: jnp.ndarray,
               match_results: jnp.ndarray,
