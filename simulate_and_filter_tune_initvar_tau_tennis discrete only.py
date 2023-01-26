@@ -181,12 +181,28 @@ discrete_ax.set_ylabel('$\log_{10} \\sigma^2_d$')
 discrete_fig.tight_layout()
 
 
+discrete_fig, discrete_ax = plt.subplots()
+discrete_ax.pcolormesh(jnp.log10(discrete_tau_linsp), jnp.log10(discrete_init_var_linsp), discrete_mls)
+discrete_mls_argmax = matrix_argmax(discrete_mls)
+discrete_ax.scatter(jnp.log10(discrete_tau_linsp[discrete_mls_argmax[1]]),
+                    jnp.log10(discrete_init_var_linsp[discrete_mls_argmax[0]]), c='red')
+discrete_ax.scatter(jnp.log10(discrete_em_out_m3[1]), jnp.log10(discrete_em_out_m3[0]), c='grey')
+discrete_ax.set_title(f'WTA, Discrete, M={m}, s=m/{int(m / discrete_s)}')
+discrete_ax.set_xlabel('$\log_{10} \\tau_d$')
+discrete_ax.set_ylabel('$\log_{10} \\sigma^2_d$')
+# discrete_ax.set_xscale('log')
+# discrete_ax.set_yscale('log')
+discrete_fig.tight_layout()
+
+
 plt.figure()
 plt.plot(discrete_em_out[0])
+plt.plot(discrete_em_out_m3[0])
 plt.title('Discrete EM init_rate')
 
 plt.figure()
 plt.plot(discrete_em_out[1])
+plt.plot(discrete_em_out_m3[1])
 plt.title('Discrete EM tau')
 
 
