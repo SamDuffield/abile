@@ -192,21 +192,6 @@ def smoother(filter_skill_t: jnp.ndarray,
 
     return pi_t_T_update, grad
 
-def grad_tau(filter_skill_t: jnp.ndarray,
-             time: float,
-             smooth_skill_tplus1: jnp.ndarray,
-             time_plus1: float,
-             tau: float,
-             _: Any) -> Tuple[jnp.ndarray, float]:
-    delta_tp1_update = (time_plus1 - time)
-
-    pred_t = K_t_Msquared(filter_skill_t, delta_tp1_update, tau)
-    norm_pi_t_T = smooth_skill_tplus1/pred_t
-
-    grad = jnp.sum(grad_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau)*filter_skill_t)
-
-    return grad
-
 
 def maximiser(times_by_player: Sequence,
               smoother_skills_and_extras_by_player: Sequence,
