@@ -1,57 +1,28 @@
 from functools import partial
 from time import time
-from jax import numpy as jnp, random, vmap, jit
+from jax import numpy as jnp, random, jit
 from jax.scipy.stats import norm
 import matplotlib.pyplot as plt
-import pandas as pd
 import pickle
 
 import models
 import smoothing
 from filtering import filter_sweep
 
+from data.tennis import load_wta
+
 rk = random.PRNGKey(0)
 filter_key, init_particle_key = random.split(rk)
 s = 1.
 epsilon = 0.
 
+# Load tennis training data (2021)
+train_match_times, train_match_player_indices, train_match_results, _, _ = load_wta(start_date='2020-12-31', end_date='2022-01-01')
 
-def consolidate_name_strings(name_series):
-    return name_series.str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8')
-
-
-def clean_tennis_data(tennis_df_in, origin_date_str, name_to_id_dict):
-    origin_date = pd.to_datetime(origin_date_str)
-    tennis_df = tennis_df_in.copy()
-    tennis_df.loc[:, 'Timestamp'] = pd.to_datetime(tennis_df['Date'], dayfirst=True)
-    tennis_df.loc[:, 'Timestamp'] = pd.to_datetime(tennis_df['Timestamp'], unit='D')
-    tennis_df.loc[:, 'TimestampDays'] = (tennis_df['Timestamp'] - origin_date).astype('timedelta64[D]').astype(int)
-    tennis_df = tennis_df.sort_values('Timestamp')
-    tennis_df.reset_index()
-    tennis_df.loc[:, 'Winner'] = consolidate_name_strings(tennis_df['Winner'])
-    tennis_df.loc[:, 'Loser'] = consolidate_name_strings(tennis_df['Loser'])
-    tennis_df.loc[:, 'WinnerID'] = tennis_df['Winner'].apply(lambda s: name_to_id_dict[s])
-    tennis_df.loc[:, 'LoserID'] = tennis_df['Loser'].apply(lambda s: name_to_id_dict[s])
-    return tennis_df
-
-
-data_2021 = pd.read_csv('data/wta_2021.csv')
-
-players_arr = pd.unique(pd.concat([consolidate_name_strings(data_2021['Winner']),
-                                   consolidate_name_strings(data_2021['Loser'])]))
-players_arr.sort()
-players_name_to_id_dict = {a: i for i, a in enumerate(players_arr)}
-players_id_to_name_dict = {i: a for i, a in enumerate(players_arr)}
-
-data_2021 = clean_tennis_data(data_2021, '2020-12-31', players_name_to_id_dict)
-
-train_match_times = jnp.array(data_2021['TimestampDays'])
-train_match_player_indices = jnp.array(data_2021[['WinnerID', 'LoserID']])
-train_match_results = jnp.ones_like(train_match_times)
 n_matches = len(train_match_results)
-n_players = len(players_arr)
+n_players = train_match_player_indices.max() + 1
 
-init_player_times = jnp.zeros(len(players_arr))
+init_player_times = jnp.zeros(n_players)
 
 times_by_player, _ = smoothing.times_and_skills_by_match_to_by_player(init_player_times,
                                                                       jnp.zeros_like(init_player_times),
@@ -88,28 +59,28 @@ def sum_log_result_probs(predict_probs):
 # uniform predictions: DeviceArray(-1696.1321, dtype=float32)
 
 
-resolution = 10
+resolution = 50
 # init_var_linsp = jnp.linspace(1e-2, 1, resolution)
 init_var_linsp = 10 ** jnp.linspace(-2, 0, resolution)
 # tau_linsp = (1 / mean_time_between_matches) * jnp.linspace(1e-1, 1, resolution)
 tau_linsp = (1 / mean_time_between_matches) * 10 ** jnp.linspace(-2, 0, resolution)
 
-trueskill_init_fig, trueskill_init_ax = plt.subplots()
-ts_init_linsp = jnp.linspace(-5, 5, 1000)
-for init_var_temp in init_var_linsp:
-    trueskill_init_ax.plot(ts_init_linsp, norm.pdf(ts_init_linsp, scale=jnp.sqrt(init_var_temp)), label=init_var_temp)
-trueskill_init_ax.legend(title='$\\sigma^2$')
+# trueskill_init_fig, trueskill_init_ax = plt.subplots()
+# ts_init_linsp = jnp.linspace(-5, 5, 1000)
+# for init_var_temp in init_var_linsp:
+#     trueskill_init_ax.plot(ts_init_linsp, norm.pdf(ts_init_linsp, scale=jnp.sqrt(init_var_temp)), label=init_var_temp)
+# trueskill_init_ax.legend(title='$\\sigma^2$')
 
 # discrete_init_var_linsp = m * jnp.linspace(1e-1, 10., resolution)
 discrete_init_var_linsp = m * 10 ** jnp.linspace(-1, 2, resolution)
 # discrete_tau_linsp = m / mean_time_between_matches * jnp.linspace(1e-1, 1., resolution)
 discrete_tau_linsp = (m / mean_time_between_matches) * 10 ** jnp.linspace(-5, 2., resolution)
 
-discrete_init_fig, discrete_init_ax = plt.subplots()
-for d_init_var_temp in discrete_init_var_linsp:
-    _, initial_distribution_skills_player = models.discrete.initiator(n_players, d_init_var_temp, None)
-    discrete_init_ax.plot(initial_distribution_skills_player[0], label=d_init_var_temp)
-discrete_init_ax.legend(title='$\\sigma^2_d$')
+# discrete_init_fig, discrete_init_ax = plt.subplots()
+# for d_init_var_temp in discrete_init_var_linsp:
+#     _, initial_distribution_skills_player = models.discrete.initiator(n_players, d_init_var_temp, None)
+#     discrete_init_ax.plot(initial_distribution_skills_player[0], label=d_init_var_temp)
+# discrete_init_ax.legend(title='$\\sigma^2_d$')
 
 trueskill_mls = jnp.zeros((len(init_var_linsp), len(tau_linsp)))
 lsmc_mls = jnp.zeros_like(trueskill_mls)
@@ -198,8 +169,10 @@ with open('data/tennis_lsmc_em.pickle', 'wb') as f:
     pickle.dump(lsmc_em_out, f)
 
 
-discrete_em_init_init_rate = 10 ** 3.
-discrete_em_init_tau = 10 ** 0.5
+# discrete_em_init_init_rate = 10 ** 3.
+# discrete_em_init_tau = 10 ** 0.5
+discrete_em_init_init_rate = 10 ** 2.
+discrete_em_init_tau = 10 ** 2.5
 
 discrete_em_out = smoothing.expectation_maximisation(models.discrete.initiator, models.discrete.filter,
                                                      models.discrete.smoother,
@@ -225,12 +198,12 @@ discrete_times = jnp.load('data/tennis_discrete_times.npy')
 with open('data/tennis_trueskill_em.pickle', 'rb') as f:
     trueskill_em_out = pickle.load(f)
 
-
 with open('data/tennis_lsmc_em.pickle', 'rb') as f:
     lsmc_em_out = pickle.load(f)
 
 with open('data/tennis_discrete_em.pickle', 'rb') as f:
     discrete_em_out = pickle.load(f)
+
 
 def matrix_argmax(mat):
     return jnp.unravel_index(mat.argmax(), mat.shape)
@@ -244,9 +217,8 @@ ts_ax.scatter(jnp.log10(trueskill_em_out[1]), jnp.log10(trueskill_em_out[0][:, 1
 ts_ax.set_title('WTA, Trueskill')
 ts_ax.set_xlabel('$\log_{10} \\tau$')
 ts_ax.set_ylabel('$\\log_{10} \sigma^2$')
-# ts_ax.set_xscale('log')
-# ts_ax.set_yscale('log')
 ts_fig.tight_layout()
+ts_fig.savefig('data/train_tennis_trueskill.png', dpi=300)
 
 lsmc_fig, lsmc_ax = plt.subplots()
 lsmc_ax.pcolormesh(jnp.log10(tau_linsp), jnp.log10(init_var_linsp), lsmc_mls)
@@ -256,9 +228,8 @@ lsmc_ax.scatter(jnp.log10(lsmc_em_out[1]), jnp.log10(lsmc_em_out[0][:, 1]), c='g
 lsmc_ax.set_title(f'WTA, LSMC, N={n_particles}')
 lsmc_ax.set_xlabel('$\log_{10} \\tau$')
 lsmc_ax.set_ylabel('$\log_{10} \\sigma^2$')
-# lsmc_ax.set_xscale('log')
-# lsmc_ax.set_yscale('log')
 lsmc_fig.tight_layout()
+lsmc_fig.savefig('data/train_tennis_lsmc.png', dpi=300)
 
 discrete_fig, discrete_ax = plt.subplots()
 discrete_ax.pcolormesh(jnp.log10(discrete_tau_linsp), jnp.log10(discrete_init_var_linsp), discrete_mls)
@@ -269,9 +240,8 @@ discrete_ax.scatter(jnp.log10(discrete_em_out[1]), jnp.log10(discrete_em_out[0])
 discrete_ax.set_title(f'WTA, Discrete, M={m}, s=m/{int(m / discrete_s)}')
 discrete_ax.set_xlabel('$\log_{10} \\tau_d$')
 discrete_ax.set_ylabel('$\log_{10} \\sigma^2_d$')
-# discrete_ax.set_xscale('log')
-# discrete_ax.set_yscale('log')
 discrete_fig.tight_layout()
+discrete_fig.savefig('data/train_tennis_discrete.png', dpi=300)
 
 
 def plot_phi(discrete_s, discrete_m=500):
