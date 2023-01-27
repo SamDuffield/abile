@@ -214,7 +214,6 @@ def maximiser(times_by_player: Sequence,
     def negative_expected_log_intial(log_rate):
         rate = jnp.exp(log_rate)
         _, initial_distribution_skills_player = initiator(n_players, rate, None)
-
         return -jnp.sum(jnp.log(initial_distribution_skills_player)*initial_smoothing_dists)
 
     optim_res = minimize(negative_expected_log_intial, jnp.log(initial_params), method='cobyla')
@@ -279,9 +278,8 @@ def maximiserM3(times_by_player: Sequence,
 
     def negative_expected_log_intial(log_rate):
         rate = jnp.exp(log_rate)
-        dist = initiator(1, rate)[1][0]
-        return vmap(lambda log_smooth_initdist: (log_smooth_initdist * dist).sum())(
-            jnp.log(1e-20 + initial_smoothing_dists)).sum()
+        _, initial_distribution_skills_player = initiator(n_players, rate, None)
+        return -jnp.sum(jnp.log(initial_distribution_skills_player)*initial_smoothing_dists)
 
     optim_res = minimize(negative_expected_log_intial, jnp.log(initial_params), method='cobyla')
     assert optim_res.success, 'init rate optimisation failed'
