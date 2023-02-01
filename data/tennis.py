@@ -39,8 +39,8 @@ def load_wta(start_date: str = '2020-12-31', end_date: str = '2023-01-01')\
     data_all = clean_tennis_data(data_all, '2020-12-31', players_name_to_id_dict)
     data_all = data_all[(data_all['Timestamp'] > start_date) & (data_all['Timestamp'] <= end_date)]
 
-    train_match_times = jnp.array(data_all['TimestampDays'])
-    train_match_player_indices = jnp.array(data_all[['WinnerID', 'LoserID']])
-    train_match_results = jnp.ones_like(train_match_times)
+    match_times = jnp.array(data_all['TimestampDays'])
+    match_player_indices = jnp.array(data_all[['WinnerID', 'LoserID']])
+    match_results = jnp.ones_like(match_times)
 
-    return train_match_times, train_match_player_indices, train_match_results, players_id_to_name_dict, players_name_to_id_dict
+    return match_times, match_player_indices, match_results, players_id_to_name_dict, players_name_to_id_dict

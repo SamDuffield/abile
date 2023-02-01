@@ -105,7 +105,7 @@ def expectation_maximisation(initiator: Callable,
                              n_steps: int,
                              n_players: int = None,
                              random_key: jnp.ndarray = None,
-                             verbose: bool = True) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+                             verbose: bool = True) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     if random_key is None:
         random_key = random.PRNGKey(0)
     if n_players is None:
@@ -121,6 +121,8 @@ def expectation_maximisation(initiator: Callable,
     propagate_params_all = propagate_params_all.at[0].set(initial_propagate_params)
     update_params_all = jnp.zeros((n_steps + 1, *initial_update_params.shape))
     update_params_all = update_params_all.at[0].set(initial_update_params)
+
+    log_marginal_likelihoods = jnp.zeros(n_steps)
 
     filter_sweep_jit = jit(partial(filter_sweep, filter=filter, match_times=match_times,
                                    match_player_indices_seq=match_player_indices_seq, match_results=match_results))
@@ -147,9 +149,12 @@ def expectation_maximisation(initiator: Callable,
                                                                          random_key=filter_key)
 
         result_probs = jnp.array([filter_pred[i, k] for i, k in enumerate(match_results)])
+        log_ml = jnp.log(result_probs).sum()
         if verbose:
             print(f'Step {i + 1}/{n_steps}, \t Average prediction of result: {result_probs.mean():.3f},'
-                  f'\t log p(y): {jnp.log(result_probs).sum():.3f}')
+                  f'\t log p(y): {log_ml:.3f}')
+        
+        log_marginal_likelihoods = log_marginal_likelihoods.at[i].set(log_ml)
 
         times_by_player, filter_skills_by_player = times_and_skills_by_match_to_by_player(init_times,
                                                                                           init_skills,
@@ -175,4 +180,4 @@ def expectation_maximisation(initiator: Callable,
         propagate_params_all = propagate_params_all.at[i + 1].set(new_propagate_params)
         update_params_all = update_params_all.at[i + 1].set(new_update_params)
 
-    return initial_params_all, propagate_params_all, update_params_all
+    return initial_params_all, propagate_params_all, update_params_all, log_marginal_likelihoods
