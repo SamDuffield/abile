@@ -15,9 +15,9 @@ rk = random.PRNGKey(0)
 filter_key, init_particle_key = random.split(rk)
 s = 1.
 
-# Load football training data (2021)
+# Load football training data (2019-2020 and 2020-2021 seasons)
 train_match_times, train_match_player_indices, train_match_results, id_to_name, name_to_id \
-    = load_epl(start_date='2020-07-30', end_date='2021-07-01')
+    = load_epl(start_date='2019-07-30', end_date='2021-07-01')
 
 n_matches = len(train_match_results)
 n_players = train_match_player_indices.max() + 1
@@ -43,7 +43,7 @@ filter_sweep_data = jit(partial(filter_sweep,
 
 n_particles = 1000
 models.lsmc.n_particles = n_particles
-m = 100
+m = 500
 models.discrete.psi_computation(m)
 discrete_s = m / 5
 
@@ -51,12 +51,10 @@ discrete_s = m / 5
 @jit
 def sum_log_result_probs(predict_probs):
     rps = jnp.array([predict_probs[i, train_match_results[i]] for i in range(n_matches)])
-    # rps = jnp.where(rps > 1, 1., rps)
-    # rps = jnp.where(rps < 1e-5, 1e-5, rps)
     return jnp.log(rps).sum()
 
 
-# uniform predictions: DeviceArray(-417.4726, dtype=float32)
+# uniform predictions: -834.9451
 
 
 n_em_steps = 100
@@ -217,7 +215,7 @@ filter_skill_ax.set_ylabel('Skill')
 filter_skill_ax.legend()
 filter_skill_ax.set_title('Football - EPl 2020/21 - TrueSkill Filtering')
 filter_skill_fig.tight_layout()
-filter_skill_fig.savefig('data/trueskill_filter.png', dpi=300)
+filter_skill_fig.savefig('data/football_trueskill_filter.png', dpi=300)
 
 
 trueskill_smoother_inds = [smoothing.smoother_sweep(models.trueskill.smoother,
@@ -238,6 +236,6 @@ smoother_skill_ax.set_ylim(filter_skill_ax.get_ylim())
 smoother_skill_ax.legend()
 smoother_skill_ax.set_title('Football - EPl 2020/21 - TrueSkill Smoothing')
 smoother_skill_fig.tight_layout()
-smoother_skill_fig.savefig('data/trueskill_smoother.png', dpi=300)
+smoother_skill_fig.savefig('data/football_trueskill_smoother.png', dpi=300)
 
 

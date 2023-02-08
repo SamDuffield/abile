@@ -16,8 +16,8 @@ filter_key, init_particle_key = random.split(rk)
 s = 1.
 epsilon = 0.
 
-# Load tennis training data (2021)
-train_match_times, train_match_player_indices, train_match_results, _, _ = load_wta(start_date='2020-12-31', end_date='2022-01-01')
+# Load tennis training data (2020 and 2021)
+train_match_times, train_match_player_indices, train_match_results, _, _ = load_wta(start_date='2019-12-31', end_date='2022-01-01')
 
 n_matches = len(train_match_results)
 n_players = train_match_player_indices.max() + 1
@@ -51,15 +51,13 @@ discrete_s = m / 5
 @jit
 def sum_log_result_probs(predict_probs):
     rps = jnp.array([predict_probs[i, train_match_results[i]] for i in range(n_matches)])
-    # rps = jnp.where(rps > 1, 1., rps)
-    # rps = jnp.where(rps < 1e-5, 1e-5, rps)
     return jnp.log(rps).sum()
 
 
-# uniform predictions: DeviceArray(-1696.1321, dtype=float32)
+# uniform predictions: -2427.4028
 
 
-resolution = 50
+resolution = 10
 # init_var_linsp = jnp.linspace(1e-2, 1, resolution)
 init_var_linsp = 10 ** jnp.linspace(-2, 0, resolution)
 # tau_linsp = (1 / mean_time_between_matches) * jnp.linspace(1e-1, 1, resolution)
@@ -135,7 +133,7 @@ jnp.save('data/tennis_discrete_mls.npy', discrete_mls)
 jnp.save('data/tennis_discrete_times.npy', discrete_times)
 
 
-n_em_steps = 100
+n_em_steps = 20
 
 ts_em_init_init_var = 10 ** -1.75
 ts_em_init_init_tau = 10 ** -1.25
