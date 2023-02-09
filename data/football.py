@@ -3,11 +3,12 @@ import pandas as pd
 from jax import numpy as jnp
 
 
-def load_epl(start_date: str = '2019-07-30', end_date: str = '2022-07-01', origin_date: str = '2019-07-30')\
+def load_epl(start_date: str = '2018-07-30', end_date: str = '2022-07-01', origin_date: str = '2019-07-30')\
     -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, dict, dict]:
     origin_date = pd.to_datetime(origin_date)
 
     cols = ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG']
+    data_18_19 = pd.read_csv('data/epl_2019_2020.csv')[cols]
     data_19_20 = pd.read_csv('data/epl_2019_2020.csv')[cols]
     data_20_21 = pd.read_csv('data/epl_2020_2021.csv')[cols]
     data_21_22 = pd.read_csv('data/epl_2021_2022.csv')[cols]

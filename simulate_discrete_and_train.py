@@ -147,19 +147,19 @@ for i, d_init_var_temp in enumerate(discrete_init_var_linsp):
         discrete_times = discrete_times.at[i, j].set(end - start)
         print(i, j, 'Discrete', discrete_mls[i, j], discrete_times[i, j])
 
-jnp.save('data/discretesim_trueskill_mls.npy', trueskill_mls)
-jnp.save('data/discretesim_trueskill_times.npy', trueskill_times)
-jnp.save('data/discretesim_lsmc_mls.npy', lsmc_mls)
-jnp.save('data/discretesim_lsmc_times.npy', lsmc_times)
-jnp.save('data/discretesim_discrete_mls.npy', discrete_mls)
-jnp.save('data/discretesim_discrete_times.npy', discrete_times)
+jnp.save('simulations/discretesim_trueskill_mls.npy', trueskill_mls)
+jnp.save('simulations/discretesim_trueskill_times.npy', trueskill_times)
+jnp.save('simulations/discretesim_lsmc_mls.npy', lsmc_mls)
+jnp.save('simulations/discretesim_lsmc_times.npy', lsmc_times)
+jnp.save('simulations/discretesim_discrete_mls.npy', discrete_mls)
+jnp.save('simulations/discretesim_discrete_times.npy', discrete_times)
 
-trueskill_mls = jnp.load('data/discretesim_trueskill_mls.npy')
-trueskill_times = jnp.load('data/discretesim_trueskill_times.npy')
-lsmc_mls = jnp.load('data/discretesim_lsmc_mls.npy')
-lsmc_times = jnp.load('data/discretesim_lsmc_times.npy')
-discrete_mls = jnp.load('data/discretesim_discrete_mls.npy')
-discrete_times = jnp.load('data/discretesim_discrete_times.npy')
+trueskill_mls = jnp.load('simulations/discretesim_trueskill_mls.npy')
+trueskill_times = jnp.load('simulations/discretesim_trueskill_times.npy')
+lsmc_mls = jnp.load('simulations/discretesim_lsmc_mls.npy')
+lsmc_times = jnp.load('simulations/discretesim_lsmc_times.npy')
+discrete_mls = jnp.load('simulations/discretesim_discrete_mls.npy')
+discrete_times = jnp.load('simulations/discretesim_discrete_times.npy')
 
 
 def matrix_argmax(mat):

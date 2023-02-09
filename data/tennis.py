@@ -23,13 +23,14 @@ def clean_tennis_data(tennis_df_in, origin_date, name_to_id_dict):
 
 
 
-def load_wta(start_date: str = '2019-12-31', end_date: str = '2023-01-01', origin_date: str = '2019-12-31')\
+def load_wta(start_date: str = '2018-12-31', end_date: str = '2023-01-01', origin_date: str = '2018-12-31')\
     -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, dict, dict]:
+    data_2019 = pd.read_csv('data/wta_2019.csv')
     data_2020 = pd.read_csv('data/wta_2020.csv')
     data_2021 = pd.read_csv('data/wta_2021.csv')
     data_2022 = pd.read_csv('data/wta_2022.csv')
 
-    data_all = pd.concat([data_2020, data_2021, data_2022])
+    data_all = pd.concat([data_2019, data_2020, data_2021, data_2022])
 
     players_arr = pd.unique(pd.concat([consolidate_name_strings(data_all['Winner']),\
         consolidate_name_strings(data_all['Loser'])]))

@@ -1,7 +1,6 @@
 from functools import partial
-from time import time
+import os
 from jax import numpy as jnp, random, jit
-from jax.scipy.stats import norm
 import matplotlib.pyplot as plt
 import pickle
 
@@ -11,13 +10,19 @@ from filtering import filter_sweep
 
 from data.football import load_epl
 
+
+sims_dir = 'simulations/'
+if not os.path.exists(sims_dir):
+    os.makedirs(sims_dir)
+
+
 rk = random.PRNGKey(0)
 filter_key, init_particle_key = random.split(rk)
 s = 1.
 
-# Load football training data (2019-2020 and 2020-2021 seasons)
+# Load football training data (2018-2019, 2019-2020 and 2020-2021 seasons)
 train_match_times, train_match_player_indices, train_match_results, id_to_name, name_to_id \
-    = load_epl(start_date='2019-07-30', end_date='2021-07-01')
+    = load_epl(start_date='2018-07-30', end_date='2021-07-01')
 
 n_matches = len(train_match_results)
 n_players = train_match_player_indices.max() + 1
@@ -54,8 +59,7 @@ def sum_log_result_probs(predict_probs):
     return jnp.log(rps).sum()
 
 
-# uniform predictions: -834.9451
-
+print('Uniform predictions:', sum_log_result_probs(jnp.ones((n_matches, 3)) / 3))
 
 n_em_steps = 100
 
@@ -76,7 +80,7 @@ trueskill_em_out = smoothing.expectation_maximisation(models.trueskill.initiator
                                                       n_em_steps)
 
 
-with open('data/football_trueskill_em.pickle', 'wb') as f:
+with open(sims_dir + 'football_trueskill_em.pickle', 'wb') as f:
     pickle.dump(trueskill_em_out, f)
 
 
@@ -89,7 +93,7 @@ lsmc_em_out = smoothing.expectation_maximisation(models.lsmc.initiator, models.l
                                                  train_match_times, train_match_player_indices, train_match_results,
                                                  n_em_steps)
 
-with open('data/football_lsmc_em.pickle', 'wb') as f:
+with open(sims_dir + 'football_lsmc_em.pickle', 'wb') as f:
     pickle.dump(lsmc_em_out, f)
 
 
@@ -107,19 +111,19 @@ discrete_em_out = smoothing.expectation_maximisation(models.discrete.initiator, 
                                                      train_match_times, train_match_player_indices, train_match_results,
                                                      n_em_steps)
 
-with open('data/football_discrete_em.pickle', 'wb') as f:
+with open(sims_dir + 'football_discrete_em.pickle', 'wb') as f:
     pickle.dump(discrete_em_out, f)
 
 
 
 
-with open('data/football_trueskill_em.pickle', 'rb') as f:
+with open(sims_dir + 'football_trueskill_em.pickle', 'rb') as f:
     trueskill_em_out = pickle.load(f)
 
-with open('data/football_lsmc_em.pickle', 'rb') as f:
+with open(sims_dir + 'football_lsmc_em.pickle', 'rb') as f:
     lsmc_em_out = pickle.load(f)
 
-with open('data/football_discrete_em.pickle', 'rb') as f:
+with open(sims_dir + 'football_discrete_em.pickle', 'rb') as f:
     discrete_em_out = pickle.load(f)
 
 
@@ -132,7 +136,7 @@ conv_ax.set_ylabel('Log likelihood')
 conv_ax.set_title('Football - EPl 2020/21')
 conv_ax.legend()
 conv_fig.tight_layout()
-conv_fig.savefig('data/train_football_lml.png', dpi=300)
+conv_fig.savefig(sims_dir + 'train_football_lml.png', dpi=300)
 
 
 epsilon_fig, epsilon_ax = plt.subplots()
@@ -143,7 +147,7 @@ epsilon_ax.set_ylabel(r'$\epsilon$')
 epsilon_ax.set_title('Football - EPl 2020/21')
 epsilon_ax.legend()
 epsilon_fig.tight_layout()
-epsilon_fig.savefig('data/train_football_epsilon_trueskill.png', dpi=300)
+epsilon_fig.savefig(sims_dir + 'train_football_epsilon_trueskill.png', dpi=300)
 
 
 epsilon_d_fig, epsilon_d_ax = plt.subplots()
@@ -153,7 +157,7 @@ epsilon_d_ax.set_ylabel(r'$\epsilon$')
 epsilon_d_ax.set_title('Football - EPl 2020/21')
 epsilon_d_ax.legend()
 epsilon_d_fig.tight_layout()
-epsilon_d_fig.savefig('data/train_football_epsilon_discrete.png', dpi=300)
+epsilon_d_fig.savefig(sims_dir + 'train_football_epsilon_discrete.png', dpi=300)
 
 
 iv_tau_fig, iv_tau_ax = plt.subplots()
@@ -168,7 +172,7 @@ iv_tau_ax.set_ylabel('$\log_{10} \\sigma^2$')
 iv_tau_ax.set_title('Football - EPl 2020/21')
 iv_tau_ax.legend()
 iv_tau_fig.tight_layout()
-iv_tau_fig.savefig('data/train_football_init_var_tau_trueskill.png', dpi=300)
+iv_tau_fig.savefig(sims_dir + 'train_football_init_var_tau_trueskill.png', dpi=300)
 
 
 iv_tau_d_fig, iv_tau_d_ax = plt.subplots()
@@ -181,7 +185,7 @@ iv_tau_d_ax.set_ylabel('$\log_{10} \\sigma^2_d$')
 iv_tau_d_ax.set_title('Football - EPl 2020/21')
 iv_tau_d_ax.legend()
 iv_tau_d_fig.tight_layout()
-iv_tau_d_fig.savefig('data/train_football_init_var_tau_discrete.png', dpi=300)
+iv_tau_d_fig.savefig(sims_dir + 'train_football_init_var_tau_discrete.png', dpi=300)
 
 
 
@@ -215,7 +219,7 @@ filter_skill_ax.set_ylabel('Skill')
 filter_skill_ax.legend()
 filter_skill_ax.set_title('Football - EPl 2020/21 - TrueSkill Filtering')
 filter_skill_fig.tight_layout()
-filter_skill_fig.savefig('data/football_trueskill_filter.png', dpi=300)
+filter_skill_fig.savefig(sims_dir + 'football_trueskill_filter.png', dpi=300)
 
 
 trueskill_smoother_inds = [smoothing.smoother_sweep(models.trueskill.smoother,
@@ -236,6 +240,6 @@ smoother_skill_ax.set_ylim(filter_skill_ax.get_ylim())
 smoother_skill_ax.legend()
 smoother_skill_ax.set_title('Football - EPl 2020/21 - TrueSkill Smoothing')
 smoother_skill_fig.tight_layout()
-smoother_skill_fig.savefig('data/football_trueskill_smoother.png', dpi=300)
+smoother_skill_fig.savefig(sims_dir + 'football_trueskill_smoother.png', dpi=300)
 
 

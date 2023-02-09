@@ -146,20 +146,20 @@ for i, d_init_var_temp in enumerate(discrete_init_var_linsp):
         discrete_times = discrete_times.at[i, j].set(end - start)
         print(i, j, 'Discrete', discrete_mls[i, j], discrete_times[i, j])
 
-jnp.save('data/trueskill_mls.npy', trueskill_mls)
-jnp.save('data/trueskill_times.npy', trueskill_times)
-jnp.save('data/lsmc_mls.npy', lsmc_mls)
-jnp.save('data/lsmc_times.npy', lsmc_times)
-jnp.save('data/discrete_mls.npy', discrete_mls)
-jnp.save('data/discrete_times.npy', discrete_times)
+jnp.save('simulations/trueskill_mls.npy', trueskill_mls)
+jnp.save('simulations/trueskill_times.npy', trueskill_times)
+jnp.save('simulations/lsmc_mls.npy', lsmc_mls)
+jnp.save('simulations/lsmc_times.npy', lsmc_times)
+jnp.save('simulations/discrete_mls.npy', discrete_mls)
+jnp.save('simulations/discrete_times.npy', discrete_times)
 
 
-trueskill_mls = jnp.load('data/trueskill_mls.npy')
-trueskill_times = jnp.load('data/trueskill_times.npy')
-lsmc_mls = jnp.load('data/lsmc_mls.npy')
-lsmc_times = jnp.load('data/lsmc_times.npy')
-discrete_mls = jnp.load('data/discrete_mls.npy')
-discrete_times = jnp.load('data/discrete_times.npy')
+trueskill_mls = jnp.load('simulations/trueskill_mls.npy')
+trueskill_times = jnp.load('simulations/trueskill_times.npy')
+lsmc_mls = jnp.load('simulations/lsmc_mls.npy')
+lsmc_times = jnp.load('simulations/lsmc_times.npy')
+discrete_mls = jnp.load('simulations/discrete_mls.npy')
+discrete_times = jnp.load('simulations/discrete_times.npy')
 
 
 
