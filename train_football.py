@@ -8,7 +8,7 @@ import models
 import smoothing
 from filtering import filter_sweep
 
-from data.football import load_epl
+from datasets.football import load_epl
 
 
 sims_dir = 'simulations/'

@@ -10,7 +10,7 @@ import models
 import smoothing
 from filtering import filter_sweep
 
-from data.tennis import load_wta
+from datasets.tennis import load_wta
 
 sims_dir = 'simulations/'
 if not os.path.exists(sims_dir):
