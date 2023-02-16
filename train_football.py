@@ -61,12 +61,11 @@ def sum_log_result_probs(predict_probs):
 
 print('Uniform predictions:', sum_log_result_probs(jnp.ones((n_matches, 3)) / 3))
 
-n_em_steps = 100
+n_em_steps = 10
 
 ts_em_init_init_var = 10 ** -1.75
 ts_em_init_tau = 10 ** -1.25
 ts_em_init_epsilon = 10 ** -1.25
-
 
 
 trueskill_em_out = smoothing.expectation_maximisation(models.trueskill.initiator, models.trueskill.filter,
@@ -133,7 +132,7 @@ conv_ax.plot(lsmc_em_out[3], label=f'LSMC, N={n_particles}')
 conv_ax.plot(discrete_em_out[3], label=f'Discrete, M={m}')
 conv_ax.set_xlabel('EM iteration')
 conv_ax.set_ylabel('Log likelihood')
-conv_ax.set_title('Football - EPl 2020/21')
+conv_ax.set_title('Football - EPL 2020/21')
 conv_ax.legend()
 conv_fig.tight_layout()
 conv_fig.savefig(sims_dir + 'train_football_lml.png', dpi=300)
@@ -144,7 +143,7 @@ epsilon_ax.plot(trueskill_em_out[2][:, 1], c='steelblue', label='TrueSkill')
 epsilon_ax.plot(lsmc_em_out[2][:, 1], c='orange', label=f'LSMC, N={n_particles}')
 epsilon_ax.set_xlabel('EM iteration')
 epsilon_ax.set_ylabel(r'$\epsilon$')
-epsilon_ax.set_title('Football - EPl 2020/21')
+epsilon_ax.set_title('Football EPL: 18/19 - 20/21')
 epsilon_ax.legend()
 epsilon_fig.tight_layout()
 epsilon_fig.savefig(sims_dir + 'train_football_epsilon_trueskill.png', dpi=300)
@@ -154,7 +153,7 @@ epsilon_d_fig, epsilon_d_ax = plt.subplots()
 epsilon_d_ax.plot(discrete_em_out[2][:, 1], c='red', label=f'Discrete, M={m}')
 epsilon_d_ax.set_xlabel('EM iteration')
 epsilon_d_ax.set_ylabel(r'$\epsilon$')
-epsilon_d_ax.set_title('Football - EPl 2020/21')
+epsilon_d_ax.set_title('Football EPL: 18/19 - 20/21')
 epsilon_d_ax.legend()
 epsilon_d_fig.tight_layout()
 epsilon_d_fig.savefig(sims_dir + 'train_football_epsilon_discrete.png', dpi=300)
@@ -169,7 +168,7 @@ iv_tau_ax.scatter(jnp.log10(ts_em_init_tau), jnp.log10(ts_em_init_init_var),\
     c='black')
 iv_tau_ax.set_xlabel('$\log_{10} \\tau$')
 iv_tau_ax.set_ylabel('$\log_{10} \\sigma^2$')
-iv_tau_ax.set_title('Football - EPl 2020/21')
+iv_tau_ax.set_title('Football EPL: 18/19 - 20/21')
 iv_tau_ax.legend()
 iv_tau_fig.tight_layout()
 iv_tau_fig.savefig(sims_dir + 'train_football_init_var_tau_trueskill.png', dpi=300)
@@ -182,7 +181,7 @@ iv_tau_d_ax.scatter(jnp.log10(discrete_em_init_tau), jnp.log10(discrete_em_init_
     c='black')
 iv_tau_d_ax.set_xlabel('$\log_{10} \\tau_d$')
 iv_tau_d_ax.set_ylabel('$\log_{10} \\sigma^2_d$')
-iv_tau_d_ax.set_title('Football - EPl 2020/21')
+iv_tau_d_ax.set_title('Football EPL: 18/19 - 20/21')
 iv_tau_d_ax.legend()
 iv_tau_d_fig.tight_layout()
 iv_tau_d_fig.savefig(sims_dir + 'train_football_init_var_tau_discrete.png', dpi=300)
@@ -217,7 +216,7 @@ for j, ind in enumerate(inds):
 filter_skill_ax.set_xlabel('Day')
 filter_skill_ax.set_ylabel('Skill')
 filter_skill_ax.legend()
-filter_skill_ax.set_title('Football - EPl 2020/21 - TrueSkill Filtering')
+filter_skill_ax.set_title('Football EPL: 18/19 - 20/21 - TrueSkill Filtering')
 filter_skill_fig.tight_layout()
 filter_skill_fig.savefig(sims_dir + 'football_trueskill_filter.png', dpi=300)
 
@@ -238,7 +237,7 @@ smoother_skill_ax.set_xlabel('Day')
 smoother_skill_ax.set_ylabel('Skill')
 smoother_skill_ax.set_ylim(filter_skill_ax.get_ylim())
 smoother_skill_ax.legend()
-smoother_skill_ax.set_title('Football - EPl 2020/21 - TrueSkill Smoothing')
+smoother_skill_ax.set_title('Football EPL: 18/19 - 20/21 - TrueSkill Smoothing')
 smoother_skill_fig.tight_layout()
 smoother_skill_fig.savefig(sims_dir + 'football_trueskill_smoother.png', dpi=300)
 
