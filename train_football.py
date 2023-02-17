@@ -36,8 +36,6 @@ times_by_player, _ = smoothing.times_and_skills_by_match_to_by_player(init_playe
                                                                       jnp.zeros(n_matches),
                                                                       jnp.zeros(n_matches))
 
-mean_time_between_matches = jnp.mean(jnp.concatenate([ts[1:] - ts[:-1] for ts in times_by_player]))
-
 # Filter (with arbitrary parameters)
 filter_sweep_data = jit(partial(filter_sweep,
                                 init_player_times=init_player_times,
@@ -61,7 +59,7 @@ def sum_log_result_probs(predict_probs):
 
 print('Uniform predictions:', sum_log_result_probs(jnp.ones((n_matches, 3)) / 3))
 
-n_em_steps = 10
+n_em_steps = 100
 
 ts_em_init_init_var = 10 ** -1.75
 ts_em_init_tau = 10 ** -1.25
@@ -132,7 +130,7 @@ conv_ax.plot(lsmc_em_out[3], label=f'LSMC, N={n_particles}')
 conv_ax.plot(discrete_em_out[3], label=f'Discrete, M={m}')
 conv_ax.set_xlabel('EM iteration')
 conv_ax.set_ylabel('Log likelihood')
-conv_ax.set_title('Football - EPL 2020/21')
+conv_ax.set_title('Football EPL: 18/19 - 20/21')
 conv_ax.legend()
 conv_fig.tight_layout()
 conv_fig.savefig(sims_dir + 'train_football_lml.png', dpi=300)
@@ -204,7 +202,7 @@ _, trueskill_filter_by_player\
                                                        trueskill_filter_out[1])
 
 
-inds = [0, 18]
+inds = [name_to_id['Arsenal'], name_to_id['Tottenham']]
 cols = ['red', 'grey']
 filter_skill_fig, filter_skill_ax = plt.subplots()
 for j, ind in enumerate(inds):
