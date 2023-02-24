@@ -67,7 +67,7 @@ def get_basic_filter(propagate: Callable,
     return filter
 
 
-def filter_sweep(filter: Callable,
+def filter_sweep_all(filter: Callable,
                  init_player_times: jnp.ndarray,
                  init_player_skills: jnp.ndarray,
                  match_times: jnp.ndarray,
@@ -75,7 +75,8 @@ def filter_sweep(filter: Callable,
                  match_results: jnp.ndarray,
                  static_propagate_params: Any,
                  static_update_params: Any,
-                 random_key: jnp.ndarray = None) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+                 random_key: jnp.ndarray = None)\
+                     -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     def scan_body(carry,
                   match_ind: int) \
             -> Tuple[Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
@@ -103,12 +104,30 @@ def filter_sweep(filter: Callable,
     if random_key is None:
         random_key = random.PRNGKey(0)
 
-    _, out_stack = scan(scan_body,
-                        (init_player_times, init_player_skills, random_key),
-                        jnp.arange(len(match_times)))
-
+    final_times_and_skills_and_rk, out_stack = scan(scan_body,
+                                                    (init_player_times, init_player_skills, random_key),
+                                                    jnp.arange(len(match_times)))
+    final_times, final_skills, _ = final_times_and_skills_and_rk
     out_skills_ind0, out_skills_ind1, predict_probs_all = out_stack
 
-    return out_skills_ind0, out_skills_ind1, predict_probs_all
+    return out_skills_ind0, out_skills_ind1, predict_probs_all, final_times, final_skills
 
-    
+
+def filter_sweep(filter: Callable,
+                 init_player_times: jnp.ndarray,
+                 init_player_skills: jnp.ndarray,
+                 match_times: jnp.ndarray,
+                 match_player_indices_seq: jnp.ndarray,
+                 match_results: jnp.ndarray,
+                 static_propagate_params: Any,
+                 static_update_params: Any,
+                 random_key: jnp.ndarray = None) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    return filter_sweep_all(filter,
+                            init_player_times,
+                            init_player_skills,
+                            match_times,
+                            match_player_indices_seq,
+                            match_results,
+                            static_propagate_params,
+                            static_update_params,
+                            random_key)[:3]

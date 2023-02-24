@@ -1,4 +1,5 @@
 from functools import partial
+import os
 from time import time
 from jax import numpy as jnp, random, jit
 from jax.scipy.stats import norm
@@ -9,15 +10,19 @@ import models
 import smoothing
 from filtering import filter_sweep
 
-from data.tennis import load_wta
+from datasets.tennis import load_wta
+
+sims_dir = 'simulations/'
+if not os.path.exists(sims_dir):
+    os.makedirs(sims_dir)
 
 rk = random.PRNGKey(0)
 filter_key, init_particle_key = random.split(rk)
 s = 1.
 epsilon = 0.
 
-# Load tennis training data (2021)
-train_match_times, train_match_player_indices, train_match_results, _, _ = load_wta(start_date='2020-12-31', end_date='2022-01-01')
+# Load tennis training data (2019, 2020 and 2021)
+train_match_times, train_match_player_indices, train_match_results, _, _ = load_wta(start_date='2018-12-31', end_date='2022-01-01')
 
 n_matches = len(train_match_results)
 n_players = train_match_player_indices.max() + 1
@@ -31,7 +36,7 @@ times_by_player, _ = smoothing.times_and_skills_by_match_to_by_player(init_playe
                                                                       jnp.zeros(n_matches),
                                                                       jnp.zeros(n_matches))
 
-mean_time_between_matches = jnp.mean(jnp.concatenate([ts[1:] - ts[:-1] for ts in times_by_player]))
+# mean_time_between_matches = jnp.mean(jnp.concatenate([ts[1:] - ts[:-1] for ts in times_by_player]))
 
 # Filter (with arbitrary parameters)
 filter_sweep_data = jit(partial(filter_sweep,
@@ -51,19 +56,18 @@ discrete_s = m / 5
 @jit
 def sum_log_result_probs(predict_probs):
     rps = jnp.array([predict_probs[i, train_match_results[i]] for i in range(n_matches)])
-    # rps = jnp.where(rps > 1, 1., rps)
-    # rps = jnp.where(rps < 1e-5, 1e-5, rps)
     return jnp.log(rps).sum()
 
+print('Uniform predictions:', sum_log_result_probs(jnp.hstack([jnp.zeros((n_matches, 1)),
+                                                               jnp.ones((n_matches, 2)) / 2])))
 
-# uniform predictions: DeviceArray(-1696.1321, dtype=float32)
 
-
-resolution = 50
+resolution = 10
 # init_var_linsp = jnp.linspace(1e-2, 1, resolution)
 init_var_linsp = 10 ** jnp.linspace(-2, 0, resolution)
-# tau_linsp = (1 / mean_time_between_matches) * jnp.linspace(1e-1, 1, resolution)
-tau_linsp = (1 / mean_time_between_matches) * 10 ** jnp.linspace(-2, 0, resolution)
+# tau_linsp = (1 / mean_time_between_matches) * 10 ** jnp.linspace(-2, 0, resolution)
+tau_linsp = 10 ** jnp.linspace(-3, -1.2, resolution)
+
 
 # trueskill_init_fig, trueskill_init_ax = plt.subplots()
 # ts_init_linsp = jnp.linspace(-5, 5, 1000)
@@ -73,8 +77,9 @@ tau_linsp = (1 / mean_time_between_matches) * 10 ** jnp.linspace(-2, 0, resoluti
 
 # discrete_init_var_linsp = m * jnp.linspace(1e-1, 10., resolution)
 discrete_init_var_linsp = m * 10 ** jnp.linspace(-1, 2, resolution)
-# discrete_tau_linsp = m / mean_time_between_matches * jnp.linspace(1e-1, 1., resolution)
-discrete_tau_linsp = (m / mean_time_between_matches) * 10 ** jnp.linspace(-5, 2., resolution)
+# discrete_tau_linsp = (m / mean_time_between_matches) * 10 ** jnp.linspace(-5, 2., resolution)
+discrete_tau_linsp = m * 10 ** jnp.linspace(-5, 0, resolution)
+
 
 # discrete_init_fig, discrete_init_ax = plt.subplots()
 # for d_init_var_temp in discrete_init_var_linsp:
@@ -127,15 +132,15 @@ for i, d_init_var_temp in enumerate(discrete_init_var_linsp):
         discrete_times = discrete_times.at[i, j].set(end - start)
         print(i, j, 'Discrete', discrete_mls[i, j], discrete_times[i, j])
 
-jnp.save('data/tennis_trueskill_mls.npy', trueskill_mls)
-jnp.save('data/tennis_trueskill_times.npy', trueskill_times)
-jnp.save('data/tennis_lsmc_mls.npy', lsmc_mls)
-jnp.save('data/tennis_lsmc_times.npy', lsmc_times)
-jnp.save('data/tennis_discrete_mls.npy', discrete_mls)
-jnp.save('data/tennis_discrete_times.npy', discrete_times)
+jnp.save(sims_dir + 'tennis_trueskill_mls.npy', trueskill_mls)
+jnp.save(sims_dir + 'tennis_trueskill_times.npy', trueskill_times)
+jnp.save(sims_dir + 'tennis_lsmc_mls.npy', lsmc_mls)
+jnp.save(sims_dir + 'tennis_lsmc_times.npy', lsmc_times)
+jnp.save(sims_dir + 'tennis_discrete_mls.npy', discrete_mls)
+jnp.save(sims_dir + 'tennis_discrete_times.npy', discrete_times)
 
 
-n_em_steps = 100
+n_em_steps = 20
 
 ts_em_init_init_var = 10 ** -1.75
 ts_em_init_init_tau = 10 ** -1.25
@@ -152,7 +157,7 @@ trueskill_em_out = smoothing.expectation_maximisation(models.trueskill.initiator
                                                       n_em_steps)
 
 
-with open('data/tennis_trueskill_em.pickle', 'wb') as f:
+with open(sims_dir + 'tennis_trueskill_em.pickle', 'wb') as f:
     pickle.dump(trueskill_em_out, f)
 
 
@@ -165,7 +170,7 @@ lsmc_em_out = smoothing.expectation_maximisation(models.lsmc.initiator, models.l
                                                  train_match_times, train_match_player_indices, train_match_results,
                                                  n_em_steps)
 
-with open('data/tennis_lsmc_em.pickle', 'wb') as f:
+with open(sims_dir + 'tennis_lsmc_em.pickle', 'wb') as f:
     pickle.dump(lsmc_em_out, f)
 
 
@@ -183,25 +188,25 @@ discrete_em_out = smoothing.expectation_maximisation(models.discrete.initiator, 
                                                      train_match_times, train_match_player_indices, train_match_results,
                                                      n_em_steps)
 
-with open('data/tennis_discrete_em.pickle', 'wb') as f:
+with open(sims_dir + 'tennis_discrete_em.pickle', 'wb') as f:
     pickle.dump(discrete_em_out, f)
 
 
 
-trueskill_mls = jnp.load('data/tennis_trueskill_mls.npy')
-trueskill_times = jnp.load('data/tennis_trueskill_times.npy')
-lsmc_mls = jnp.load('data/tennis_lsmc_mls.npy')
-lsmc_times = jnp.load('data/tennis_lsmc_times.npy')
-discrete_mls = jnp.load('data/tennis_discrete_mls.npy')
-discrete_times = jnp.load('data/tennis_discrete_times.npy')
+trueskill_mls = jnp.load(sims_dir + 'tennis_trueskill_mls.npy')
+trueskill_times = jnp.load(sims_dir + 'tennis_trueskill_times.npy')
+lsmc_mls = jnp.load(sims_dir + 'tennis_lsmc_mls.npy')
+lsmc_times = jnp.load(sims_dir + 'tennis_lsmc_times.npy')
+discrete_mls = jnp.load(sims_dir + 'tennis_discrete_mls.npy')
+discrete_times = jnp.load(sims_dir + 'tennis_discrete_times.npy')
 
-with open('data/tennis_trueskill_em.pickle', 'rb') as f:
+with open(sims_dir + 'tennis_trueskill_em.pickle', 'rb') as f:
     trueskill_em_out = pickle.load(f)
 
-with open('data/tennis_lsmc_em.pickle', 'rb') as f:
+with open(sims_dir + 'tennis_lsmc_em.pickle', 'rb') as f:
     lsmc_em_out = pickle.load(f)
 
-with open('data/tennis_discrete_em.pickle', 'rb') as f:
+with open(sims_dir + 'tennis_discrete_em.pickle', 'rb') as f:
     discrete_em_out = pickle.load(f)
 
 
@@ -218,7 +223,7 @@ ts_ax.set_title('WTA, Trueskill')
 ts_ax.set_xlabel('$\log_{10} \\tau$')
 ts_ax.set_ylabel('$\\log_{10} \sigma^2$')
 ts_fig.tight_layout()
-ts_fig.savefig('data/train_tennis_trueskill.png', dpi=300)
+ts_fig.savefig(sims_dir + 'train_tennis_trueskill.png', dpi=300)
 
 lsmc_fig, lsmc_ax = plt.subplots()
 lsmc_ax.pcolormesh(jnp.log10(tau_linsp), jnp.log10(init_var_linsp), lsmc_mls)
@@ -229,7 +234,7 @@ lsmc_ax.set_title(f'WTA, LSMC, N={n_particles}')
 lsmc_ax.set_xlabel('$\log_{10} \\tau$')
 lsmc_ax.set_ylabel('$\log_{10} \\sigma^2$')
 lsmc_fig.tight_layout()
-lsmc_fig.savefig('data/train_tennis_lsmc.png', dpi=300)
+lsmc_fig.savefig(sims_dir + 'train_tennis_lsmc.png', dpi=300)
 
 discrete_fig, discrete_ax = plt.subplots()
 discrete_ax.pcolormesh(jnp.log10(discrete_tau_linsp), jnp.log10(discrete_init_var_linsp), discrete_mls)
@@ -241,7 +246,7 @@ discrete_ax.set_title(f'WTA, Discrete, M={m}, s=m/{int(m / discrete_s)}')
 discrete_ax.set_xlabel('$\log_{10} \\tau_d$')
 discrete_ax.set_ylabel('$\log_{10} \\sigma^2_d$')
 discrete_fig.tight_layout()
-discrete_fig.savefig('data/train_tennis_discrete.png', dpi=300)
+discrete_fig.savefig(sims_dir + 'train_tennis_discrete.png', dpi=300)
 
 
 def plot_phi(discrete_s, discrete_m=500):

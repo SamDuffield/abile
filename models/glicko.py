@@ -20,7 +20,7 @@ def propagate(skills: jnp.ndarray,
               _: Any) -> jnp.ndarray:
     tau, max_var = tau_and_max_var
     skills = jnp.atleast_2d(skills)
-    new_var = skills[:, -1] + tau * jnp.sqrt(time_interval)
+    new_var = skills[:, -1] + tau * time_interval
     new_var = jnp.where(new_var > max_var, max_var, new_var)
     return jnp.squeeze(skills.at[:, -1].set(new_var))
 
@@ -31,10 +31,9 @@ def update(skill_p1: jnp.ndarray,
            _: Any,
            __: Any) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     # see The Glicko system for equations
-    # https://www.microsoft.com/en-us/research/wp-content/uploads/2008/01/NIPS2007_0931.pdf
 
-    w_p1 = jnp.where(match_result == 0, 0.5, 2)
-    w_p1 = jnp.where(match_result == 1, 1, w_p1)
+    w_p1 = jnp.where(match_result == 1, 1, 0)
+    w_p1 = jnp.where(match_result == 0, 0.5, w_p1)
     w_p2 = 1 - w_p1
 
     mu_p1, var_p1 = skill_p1
@@ -52,10 +51,11 @@ def update(skill_p1: jnp.ndarray,
     new_var_p1 = 1 / (1 / var_p1 + 1 / d2_p1)
     new_var_p2 = 1 / (1 / var_p2 + 1 / d2_p2)
 
-    new_mu_p1 = mu_p1 + 1 * new_var_p1 * g_p1 * (w_p1 - e_p1)
-    new_mu_p2 = mu_p2 + 1 * new_var_p2 * g_p2 * (w_p2 - e_p2)
+    new_mu_p1 = mu_p1 + q * new_var_p1 * g_p1 * (w_p1 - e_p1)
+    new_mu_p2 = mu_p2 + q * new_var_p2 * g_p2 * (w_p2 - e_p2)
 
     predict_probs = jnp.array([0., e_p1, e_p2])
+    predict_probs /= predict_probs.sum()
 
     return jnp.array([new_mu_p1, new_var_p1]), jnp.array([new_mu_p2, new_var_p2]), predict_probs
 
