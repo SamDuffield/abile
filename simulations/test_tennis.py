@@ -1,7 +1,6 @@
 from functools import partial
 import os
 from jax import numpy as jnp, random, jit
-from jax.lax import scan
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -43,8 +42,8 @@ match_times, match_player_indices, match_results, _, _ = load_wta(
 
 test_time_start = 365 * 3
 test_start_ind = jnp.where(match_times > test_time_start)[0][0]
+train_match_results = match_results[:test_start_ind]
 test_match_results = match_results[test_start_ind:]
-
 
 n_matches = len(match_results)
 n_test_matches = len(test_match_results)
@@ -60,20 +59,22 @@ filter_sweep_data = jit(partial(abile.filter_sweep,
                                 match_results=match_results,
                                 random_key=filter_key), static_argnums=(0,))
 
-
 # Run Elo
 init_elo_skills = jnp.zeros(n_players)
 elo_filter_out = filter_sweep_data(models.elo.filter,
                                    init_player_skills=init_elo_skills,
                                    static_propagate_params=None, static_update_params=[400, 20, 0])
+elo_train_preds = elo_filter_out[-1][:test_start_ind]
 elo_test_preds = elo_filter_out[-1][test_start_ind:]
 
 # Run Glicko
-init_glicko_skills = jnp.hstack([jnp.zeros((n_players, 1)), 100 * jnp.ones((n_players, 1))])
+init_glicko_skills = jnp.hstack([jnp.zeros((n_players, 1)), 350 ** 2 * jnp.ones((n_players, 1))])
 glicko_filter_out = filter_sweep_data(models.glicko.filter, init_player_skills=init_glicko_skills,
                                       static_propagate_params=[34.6, 350 ** 2],
                                       static_update_params=[400, 0])
+glicko_train_preds = glicko_filter_out[-1][:test_start_ind]
 glicko_test_preds = glicko_filter_out[-1][test_start_ind:]
+
 
 # Run Trueskill
 _, init_ts_skills_and_var = models.trueskill.initiator(
@@ -81,6 +82,7 @@ _, init_ts_skills_and_var = models.trueskill.initiator(
 ts_filter_out = filter_sweep_data(models.trueskill.filter,
                                   init_player_skills=init_ts_skills_and_var,
                                   static_propagate_params=ts_tau, static_update_params=[s, epsilon])
+ts_train_preds = ts_filter_out[-1][:test_start_ind]
 ts_test_preds = ts_filter_out[-1][test_start_ind:]
 
 # Run LSMC
@@ -89,6 +91,7 @@ _, init_lsmc_skills = models.lsmc.initiator(
 lsmc_filter_out = filter_sweep_data(
     models.lsmc.filter, init_player_skills=init_lsmc_skills, static_propagate_params=lsmc_tau,
     static_update_params=[s, epsilon])
+lsmc_train_preds = lsmc_filter_out[-1][:test_start_ind]
 lsmc_test_preds = lsmc_filter_out[-1][test_start_ind:]
 
 # Run discrete
@@ -97,19 +100,32 @@ _, init_discrete_skills = models.discrete.initiator(
 discrete_filter_out = filter_sweep_data(
     models.discrete.filter, init_player_skills=init_discrete_skills,
     static_propagate_params=discrete_tau, static_update_params=[discrete_s, epsilon])
+discrete_train_preds = discrete_filter_out[-1][:test_start_ind]
 discrete_test_preds = discrete_filter_out[-1][test_start_ind:]
 
 
 @jit
-def nll(predict_probs):
-    rps = jnp.array([predict_probs[i, test_match_results[i]]
-                     for i in range(n_test_matches)])
+def nll(predict_probs, results):
+    rps = predict_probs[jnp.arange(len(results)), results]
     return -jnp.log(rps).mean()
 
+nlls = pd.DataFrame({'Model': ['Elo', 'Glicko', 'Trueskill', 'LSMC', 'Discrete'],
+                     'Train NLL': [nll(elo_train_preds, train_match_results),
+                                   nll(glicko_train_preds, train_match_results),
+                                   nll(ts_train_preds, train_match_results),
+                                   nll(lsmc_train_preds, train_match_results),
+                                   nll(discrete_train_preds, train_match_results)],
+                     'Test NLL': [nll(elo_test_preds, test_match_results),
+                                   nll(glicko_test_preds, test_match_results),
+                                   nll(ts_test_preds, test_match_results),
+                                   nll(lsmc_test_preds, test_match_results),
+                                   nll(discrete_test_preds, test_match_results)]})
 
-print('NLL Elo: ', nll(elo_test_preds))
-print('NLL Glicko: ', nll(glicko_test_preds))
-print('NLL Trueskill: ', nll(ts_test_preds))
-print('NLL LSMC: ', nll(lsmc_test_preds))
-print('NLL Discrete: ', nll(discrete_test_preds))
+print('Sorted by Train NLL')
+print(nlls.sort_values(by='Train NLL', ascending=False))
+
+print('\nSorted by Test NLL')
+print(nlls.sort_values(by='Test NLL', ascending=False))
+
+
 
