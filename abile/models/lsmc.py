@@ -5,8 +5,8 @@ from jax.scipy.stats import norm
 # from jax.scipy.optimize import minimize
 from scipy.optimize import minimize
 
-from filtering import get_random_filter
-from smoothing import times_and_skills_by_player_to_by_match
+from abile import get_random_filter
+from abile import times_and_skills_by_player_to_by_match
 
 # skills.shape = (number of players, number of particles)
 # match_result in (0 for draw, 1 for p1 victory, 2 for p2 victory)

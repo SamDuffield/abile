@@ -3,7 +3,7 @@ from functools import partial
 from jax import numpy as jnp, random, jit
 from jax.lax import scan
 
-from filtering import filter_sweep
+from abile.filtering import filter_sweep
 
 
 def smoother_sweep(smoother: Callable,
