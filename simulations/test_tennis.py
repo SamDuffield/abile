@@ -66,14 +66,14 @@ init_elo_skills = jnp.zeros(n_players)
 elo_filter_out = filter_sweep_data(models.elo.filter,
                                    init_player_skills=init_elo_skills,
                                    static_propagate_params=None, static_update_params=[400, 20, 0])
-elo_test_preds = elo_filter_out[-1][test_time_start:]
+elo_test_preds = elo_filter_out[-1][test_start_ind:]
 
 # Run Glicko
 init_glicko_skills = jnp.hstack([jnp.zeros((n_players, 1)), 100 * jnp.ones((n_players, 1))])
 glicko_filter_out = filter_sweep_data(models.glicko.filter, init_player_skills=init_glicko_skills,
                                       static_propagate_params=[34.6, 350 ** 2],
                                       static_update_params=[400, 0])
-glicko_test_preds = glicko_filter_out[-1][test_time_start:]
+glicko_test_preds = glicko_filter_out[-1][test_start_ind:]
 
 # Run Trueskill
 _, init_ts_skills_and_var = models.trueskill.initiator(
@@ -81,7 +81,7 @@ _, init_ts_skills_and_var = models.trueskill.initiator(
 ts_filter_out = filter_sweep_data(models.trueskill.filter,
                                   init_player_skills=init_ts_skills_and_var,
                                   static_propagate_params=ts_tau, static_update_params=[s, epsilon])
-ts_test_preds = ts_filter_out[-1][test_time_start:]
+ts_test_preds = ts_filter_out[-1][test_start_ind:]
 
 # Run LSMC
 _, init_lsmc_skills = models.lsmc.initiator(
@@ -89,7 +89,7 @@ _, init_lsmc_skills = models.lsmc.initiator(
 lsmc_filter_out = filter_sweep_data(
     models.lsmc.filter, init_player_skills=init_lsmc_skills, static_propagate_params=lsmc_tau,
     static_update_params=[s, epsilon])
-lsmc_test_preds = lsmc_filter_out[-1][test_time_start:]
+lsmc_test_preds = lsmc_filter_out[-1][test_start_ind:]
 
 # Run discrete
 _, init_discrete_skills = models.discrete.initiator(
@@ -97,7 +97,7 @@ _, init_discrete_skills = models.discrete.initiator(
 discrete_filter_out = filter_sweep_data(
     models.discrete.filter, init_player_skills=init_discrete_skills,
     static_propagate_params=discrete_tau, static_update_params=[discrete_s, epsilon])
-discrete_test_preds = discrete_filter_out[-1][test_time_start:]
+discrete_test_preds = discrete_filter_out[-1][test_start_ind:]
 
 
 @jit
