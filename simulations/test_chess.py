@@ -41,6 +41,8 @@ discrete_epsilon = 112
 # Load all chess data (2016, 2017, 2018 and 2019)
 match_times, match_player_indices, match_results, id_to_name, name_to_id \
     = load_chess(start_date='2015-12-31', end_date='2020-01-01')
+    
+print('Draw percentage: ', jnp.mean(match_results == 0) * 100, '%')
 
 test_time_start = 365 * 3
 test_start_ind = jnp.where(match_times > test_time_start)[0][0]

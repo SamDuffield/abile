@@ -42,6 +42,8 @@ discrete_epsilon = 30
 match_times, match_player_indices, match_results, _, _ = load_epl(
     start_date='2018-07-30', end_date='2022-07-01')
 
+print('Draw percentage: ', jnp.mean(match_results == 0) * 100, '%')
+
 test_time_start = 365 * 3
 test_start_ind = jnp.where(match_times > test_time_start)[0][0]
 train_match_results = match_results[:test_start_ind]
