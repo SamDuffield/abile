@@ -113,6 +113,8 @@ def nll(predict_probs, results):
     rps = predict_probs[jnp.arange(len(results)), results]
     return -jnp.log(rps).mean()
 
+
+
 nlls = pd.DataFrame({'Model': ['Elo', 'Glicko', 'Trueskill', 'LSMC', 'Discrete'],
                      'Train NLL': [nll(elo_train_preds, train_match_results),
                                    nll(glicko_train_preds, train_match_results),
@@ -124,6 +126,9 @@ nlls = pd.DataFrame({'Model': ['Elo', 'Glicko', 'Trueskill', 'LSMC', 'Discrete']
                                    nll(ts_test_preds, test_match_results),
                                    nll(lsmc_test_preds, test_match_results),
                                    nll(discrete_test_preds, test_match_results)]})
+
+print('Unsorted')
+print(nlls)
 
 print('Sorted by Train NLL')
 print(nlls.sort_values(by='Train NLL', ascending=False))

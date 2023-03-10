@@ -56,7 +56,7 @@ discrete_s = m / 5
 
 @jit
 def sum_log_result_probs(predict_probs):
-    rps = jnp.array([predict_probs[i, train_match_results[i]] for i in range(n_matches)])
+    rps = predict_probs[jnp.arange(len(train_match_results)), train_match_results]
     return jnp.log(rps).sum()
 
 
@@ -64,7 +64,7 @@ print('Uniform predictions:', sum_log_result_probs(jnp.hstack([jnp.zeros((n_matc
                                                                jnp.ones((n_matches, 2)) / 2])))
 
 
-resolution = 10
+resolution = 50
 # init_var_linsp = jnp.linspace(1e-2, 1, resolution)
 init_var_linsp = 10 ** jnp.linspace(-2, 0, resolution)
 # tau_linsp = (1 / mean_time_between_matches) * 10 ** jnp.linspace(-2, 0, resolution)
@@ -89,6 +89,7 @@ discrete_tau_linsp = m * 10 ** jnp.linspace(-5, 0, resolution)
 #     discrete_init_ax.plot(initial_distribution_skills_player[0], label=d_init_var_temp)
 # discrete_init_ax.legend(title='$\\sigma^2_d$')
 
+
 trueskill_mls = jnp.zeros((len(init_var_linsp), len(tau_linsp)))
 lsmc_mls = jnp.zeros_like(trueskill_mls)
 discrete_mls = jnp.zeros_like(trueskill_mls)
@@ -96,6 +97,8 @@ discrete_mls = jnp.zeros_like(trueskill_mls)
 trueskill_times = jnp.zeros_like(trueskill_mls)
 lsmc_times = jnp.zeros_like(trueskill_mls)
 discrete_times = jnp.zeros_like(trueskill_mls)
+
+
 
 for i, init_var_temp in enumerate(init_var_linsp):
     for j, tau_temp in enumerate(tau_linsp):

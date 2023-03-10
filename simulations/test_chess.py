@@ -125,6 +125,10 @@ nlls = pd.DataFrame({'Model': ['Elo', 'Glicko', 'Trueskill', 'LSMC', 'Discrete']
                                    nll(lsmc_test_preds, test_match_results),
                                    nll(discrete_test_preds, test_match_results)]})
 
+
+print('Unsorted')
+print(nlls)
+
 print('Sorted by Train NLL')
 print(nlls.sort_values(by='Train NLL', ascending=False))
 

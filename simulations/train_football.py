@@ -58,6 +58,29 @@ def sum_log_result_probs(predict_probs):
 
 print('Uniform predictions:', sum_log_result_probs(jnp.ones((n_matches, 3)) / 3))
 
+
+resolution = 50
+elo_k_linsp = 10 ** jnp.linspace(-3, -2, resolution)
+elo_mls = jnp.zeros(len(elo_k_linsp))
+
+for i, k_temp in enumerate(elo_k_linsp):
+    init_elo_skills = jnp.zeros(n_players)
+    elo_filter_out = filter_sweep_data(
+        models.elo.filter, init_player_skills=init_elo_skills,
+        static_propagate_params=None, static_update_params=[s, k_temp,  2])
+    elo_mls = elo_mls.at[i].set(sum_log_result_probs(elo_filter_out[2]))
+    print(i, 'Elo', elo_mls[i])
+
+
+elo_fig, elo_ax = plt.subplots()
+elo_ax.plot(jnp.log10(elo_k_linsp), elo_mls)
+elo_ax.set_xlabel('$\\log_{10} k$')
+elo_ax.set_title('WTA, Elo')
+elo_fig.tight_layout()
+print('Elo optimal k: ', elo_k_linsp[elo_mls.argmax()])
+
+
+
 n_em_steps = 100
 
 ts_em_init_init_var = 10 ** -1.75

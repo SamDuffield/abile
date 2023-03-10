@@ -41,6 +41,7 @@ def update(skill_p1: float,
     prob_vp1 = sigma(skill_p1 - skill_p2, s*2, kappa)
     prob_vp2 = sigma(skill_p2 - skill_p1, s*2, kappa)
     prob_draw = 1 - prob_vp1 - prob_vp2
+    prob_draw = jnp.where(kappa == 0, 0, prob_draw)
 
     w_p1 = jnp.where(match_result == 0, 0.5, 2)
     w_p1 = jnp.where(match_result == 1, 1, w_p1)

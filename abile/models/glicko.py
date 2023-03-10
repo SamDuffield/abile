@@ -10,7 +10,9 @@ from .elo import sigma
 # static_propagate_params = (tau, max_skill_var)
 #       tau = some measure of variability in skill over time
 #       max_var = cap on variance of skill (i.e. variance of unrated player)
-# static_update_params = None
+# static_update_params = (s, k)
+#       s = some measure of variability in performance
+#       kappa = draw parameter (0 for no draws, normally 2 for draws)
 
 
 def propagate(skills: jnp.ndarray,

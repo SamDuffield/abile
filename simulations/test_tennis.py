@@ -26,6 +26,19 @@ s = 1.
 discrete_s = m / 5
 epsilon = 0.
 
+# elo_s = 1
+# elo_k = 0.104
+
+# glicko_s = 1
+# glicko_init_var = 0.13
+# glicko_tau = 0.001
+
+elo_s = 400
+elo_k = 20
+
+glicko_s = 400
+glicko_init_var = 350 ** 2
+glicko_tau = 34.6
 
 ts_init_var = 10 ** -0.75
 ts_tau = 10 ** -2
@@ -63,15 +76,15 @@ filter_sweep_data = jit(partial(abile.filter_sweep,
 init_elo_skills = jnp.zeros(n_players)
 elo_filter_out = filter_sweep_data(models.elo.filter,
                                    init_player_skills=init_elo_skills,
-                                   static_propagate_params=None, static_update_params=[400, 20, 0])
+                                   static_propagate_params=None, static_update_params=[elo_s, elo_k, 0])
 elo_train_preds = elo_filter_out[-1][:test_start_ind]
 elo_test_preds = elo_filter_out[-1][test_start_ind:]
 
 # Run Glicko
-init_glicko_skills = jnp.hstack([jnp.zeros((n_players, 1)), 350 ** 2 * jnp.ones((n_players, 1))])
+init_glicko_skills = jnp.hstack([jnp.zeros((n_players, 1)), glicko_init_var * jnp.ones((n_players, 1))])
 glicko_filter_out = filter_sweep_data(models.glicko.filter, init_player_skills=init_glicko_skills,
-                                      static_propagate_params=[34.6, 350 ** 2],
-                                      static_update_params=[400, 0])
+                                      static_propagate_params=[glicko_tau, glicko_init_var],
+                                      static_update_params=[glicko_s, 0])
 glicko_train_preds = glicko_filter_out[-1][:test_start_ind]
 glicko_test_preds = glicko_filter_out[-1][test_start_ind:]
 
@@ -120,6 +133,9 @@ nlls = pd.DataFrame({'Model': ['Elo', 'Glicko', 'Trueskill', 'LSMC', 'Discrete']
                                    nll(ts_test_preds, test_match_results),
                                    nll(lsmc_test_preds, test_match_results),
                                    nll(discrete_test_preds, test_match_results)]})
+
+print('Unsorted')
+print(nlls)
 
 print('Sorted by Train NLL')
 print(nlls.sort_values(by='Train NLL', ascending=False))
