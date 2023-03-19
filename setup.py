@@ -13,7 +13,7 @@ setup(
     license="MIT",
     packages=find_packages(),
     python_requires=">=3.8",
-    install_requires=["jax", "jaxlib", "scipy"],
+    install_requires=["jax", "jaxlib", "scipy", "numpy"],
     classifiers=[
         "Programming Language :: Python",
         "Intended Audience :: Developers",
