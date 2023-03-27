@@ -9,8 +9,8 @@ from scipy.optimize import minimize
 
 from numpy.polynomial.hermite import hermgauss
 
-from filtering import get_basic_filter
-from smoothing import times_and_skills_by_player_to_by_match
+from abile import get_basic_filter
+from abile import times_and_skills_by_player_to_by_match
 
 # skills.shape = (number of players, 2)         1 row for skill mean, 1 row for skill variance
 # match_result in (0 for draw, 1 for p1 victory, 2 for p2 victory)
