@@ -9,8 +9,8 @@ from scipy.optimize import minimize
 
 from numpy.polynomial.hermite import hermgauss
 
-from abile import get_basic_filter
-from abile import times_and_skills_by_player_to_by_match
+from abile import get_basic_filter, times_and_skills_by_player_to_by_match
+
 
 # skills.shape = (number of players, 2)         1 row for skill mean, 1 row for skill variance
 # match_result in (0 for draw, 1 for p1 victory, 2 for p2 victory)
@@ -231,8 +231,10 @@ def maximiser(times_by_player: Sequence,
               propagate_params: jnp.ndarray,
               update_params: jnp.ndarray,
               i: int,
-              random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    no_draw_bool = (update_params[1] == 0.) and (0 not in match_results)
+              random_key: jnp.ndarray,
+              no_draw_bool: bool = None) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    if no_draw_bool is None:
+        no_draw_bool = (update_params[1] == 0.) and (0 not in match_results)
 
     times_by_player_clean = [t for t in times_by_player if len(t) > 1]
     smoother_skills_and_extras_by_player_clean = [p for p in smoother_skills_and_extras_by_player if len(p[0]) > 1]
@@ -274,7 +276,8 @@ def maximiser(times_by_player: Sequence,
             elogp_vp1 = ghint(integrand=log_vp1_prob)
             elogp_vp2 = ghint(integrand=log_vp2_prob)
             elogp_all = jnp.array([elogp_draw, elogp_vp1, elogp_vp2])
-            elogp = jnp.array([e[m] for e, m in zip(elogp_all.T, match_results)])
+            elogp = elogp_all.T[jnp.arange(len(match_results)), match_results]
+            # elogp = jnp.array([e[m] for e, m in zip(elogp_all.T, match_results)])
             return - (elogp.mean() + ((epsilon_prior_alpha - 1) * log_epsilon[0]
                                       - epsilon_prior_beta * jnp.exp(log_epsilon[0])) / len(match_results))
 
