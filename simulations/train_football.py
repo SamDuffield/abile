@@ -58,34 +58,54 @@ def sum_log_result_probs(predict_probs):
 
 print('Uniform predictions:', sum_log_result_probs(jnp.ones((n_matches, 3)) / 3))
 
+def matrix_argmax(mat):
+    return jnp.unravel_index(mat.argmax(), mat.shape)
+
 
 resolution = 50
-elo_k_linsp = 10 ** jnp.linspace(-3, -2, resolution)
-elo_mls = jnp.zeros(len(elo_k_linsp))
+elo_k_linsp = 10 ** jnp.linspace(-5, -1., resolution)
+elo_kappa_linsp = 10 ** jnp.linspace(-1, 1., resolution)
+elo_mls = jnp.zeros((len(elo_k_linsp), len(elo_kappa_linsp)))
 
 for i, k_temp in enumerate(elo_k_linsp):
-    init_elo_skills = jnp.zeros(n_players)
-    elo_filter_out = filter_sweep_data(
-        models.elo.filter, init_player_skills=init_elo_skills,
-        static_propagate_params=None, static_update_params=[s, k_temp,  2])
-    elo_mls = elo_mls.at[i].set(sum_log_result_probs(elo_filter_out[2]))
-    print(i, 'Elo', elo_mls[i])
-
+    for j, kap_temp in enumerate(elo_kappa_linsp):
+        init_elo_skills = jnp.zeros(n_players)
+        elo_filter_out = filter_sweep_data(
+            models.elo.filter, init_player_skills=init_elo_skills,
+            static_propagate_params=None, static_update_params=[s, k_temp,  kap_temp])
+        elo_mls = elo_mls.at[i, j].set(sum_log_result_probs(elo_filter_out[2]))
+        print(i, j, 'Elo', elo_mls[i, j])
 
 elo_fig, elo_ax = plt.subplots()
-elo_ax.plot(jnp.log10(elo_k_linsp), elo_mls)
-elo_ax.set_xlabel('$\\log_{10} k$')
-elo_ax.set_title('WTA, Elo')
-elo_fig.tight_layout()
-print('Elo optimal k: ', elo_k_linsp[elo_mls.argmax()])
-
-
+elo_ax.pcolormesh(
+    jnp.log10(elo_kappa_linsp),
+    jnp.log10(elo_k_linsp),
+    elo_mls)
+elo_mls_argmax = matrix_argmax(elo_mls)
+elo_ax.scatter(jnp.log10(elo_kappa_linsp[elo_mls_argmax[1]]),
+                  jnp.log10(elo_k_linsp[elo_mls_argmax[0]]), c='red')
+elo_ax.set_xlabel('$\log_{10} \\kappa$')
+elo_ax.set_ylabel('$\log_{10} k$')
+print(elo_mls.max())
+print('Elo optimal k: ', elo_k_linsp[elo_mls_argmax[0]])
+print('Elo optimal kappa: ', elo_kappa_linsp[elo_mls_argmax[1]])
 
 n_em_steps = 100
 
 ts_em_init_init_var = 10 ** -1.75
 ts_em_init_tau = 10 ** -1.25
 ts_em_init_epsilon = 10 ** -1.25
+
+# ts_em_init_init_var = 0.13
+# ts_em_init_tau = 0.001
+# ts_em_init_epsilon = 0.48
+
+
+exkf_em_out = abile.expectation_maximisation(
+    models.extended_kalman.initiator, models.extended_kalman.filter,
+    models.extended_kalman.smoother, models.extended_kalman.maximiser, [0., ts_em_init_init_var],
+    ts_em_init_tau, [s, ts_em_init_epsilon],
+    train_match_times, train_match_player_indices, train_match_results, n_em_steps)
 
 
 trueskill_em_out = abile.expectation_maximisation(

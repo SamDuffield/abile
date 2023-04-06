@@ -1,18 +1,11 @@
 from functools import partial
-import os
 from jax import numpy as jnp, random, jit
-from jax.lax import scan
 import pandas as pd
-import matplotlib.pyplot as plt
 
 import abile
 from abile import models
 
 from datasets.football import load_epl
-
-results_dir = 'results/'
-if not os.path.exists(results_dir):
-    os.makedirs(results_dir)
 
 rk = random.PRNGKey(0)
 filter_key, init_particle_key = random.split(rk)
@@ -24,18 +17,25 @@ models.discrete.psi_computation(m)
 
 s = 1.
 
-ts_init_var = 10 ** -0.4
-ts_tau = 10 ** -1.5
-ts_epsilon = 0.35
+elo_k = 1e-5
+elo_kappa = 0.54286754
 
-lsmc_init_var = 10 ** -0.6
-lsmc_tau = 10 ** -1.6
-lsmc_epsilon = 0.34
+exkf_init_var = 0.13117045
+exkf_tau = 0.00100004
+exkf_epsilon = 0.4741553
 
-discrete_init_var = 10 ** 3.3
-discrete_tau = 10 ** 1.35
+ts_init_var = 0.34590456
+ts_tau = 0.00721472
+ts_epsilon = 0.3296613
+
+lsmc_init_var =  0.19661216
+lsmc_tau = 0.0064961524
+lsmc_epsilon = 0.31839916
+
+discrete_init_var = 1998.5474
+discrete_tau = 0.58106744
 discrete_s = m / 5
-discrete_epsilon = 30
+discrete_epsilon = 31.9206
 
 
 # Load all football data (Summer 2018 - Summer 2022)
@@ -69,17 +69,18 @@ filter_sweep_data = jit(partial(abile.filter_sweep,
 init_elo_skills = jnp.zeros(n_players)
 elo_filter_out = filter_sweep_data(models.elo.filter,
                                    init_player_skills=init_elo_skills,
-                                   static_propagate_params=None, static_update_params=[400, 20, 2])
+                                   static_propagate_params=None, static_update_params=[s, elo_k, elo_kappa])
 elo_train_preds = elo_filter_out[-1][:test_start_ind]
 elo_test_preds = elo_filter_out[-1][test_start_ind:]
 
-# Run Glicko
-init_glicko_skills = jnp.hstack([jnp.zeros((n_players, 1)), 350 ** 2 * jnp.ones((n_players, 1))])
-glicko_filter_out = filter_sweep_data(models.glicko.filter, init_player_skills=init_glicko_skills,
-                                      static_propagate_params=[34.6, 350 ** 2],
-                                      static_update_params=[400, 2])
-glicko_train_preds = glicko_filter_out[-1][:test_start_ind]
-glicko_test_preds = glicko_filter_out[-1][test_start_ind:]
+# Run ExKF
+_, init_exkf_skills_and_var = models.extended_kalman.initiator(
+    n_players, jnp.array([0, exkf_init_var]))
+exkf_filter_out = filter_sweep_data(models.extended_kalman.filter,
+                                    init_player_skills=init_exkf_skills_and_var,
+                                    static_propagate_params=exkf_tau, static_update_params=[s, exkf_epsilon])
+exkf_train_preds = exkf_filter_out[-1][:test_start_ind]
+exkf_test_preds = exkf_filter_out[-1][test_start_ind:]
 
 
 # Run Trueskill
@@ -116,25 +117,18 @@ def nll(predict_probs, results):
     return -jnp.log(rps).mean()
 
 
-
-nlls = pd.DataFrame({'Model': ['Elo', 'Glicko', 'Trueskill', 'LSMC', 'Discrete'],
+nlls = pd.DataFrame({'Model': ['Elo', 'ExKF', 'Trueskill', 'LSMC', 'Discrete'],
                      'Train NLL': [nll(elo_train_preds, train_match_results),
-                                   nll(glicko_train_preds, train_match_results),
+                                   nll(exkf_train_preds, train_match_results),
                                    nll(ts_train_preds, train_match_results),
                                    nll(lsmc_train_preds, train_match_results),
                                    nll(discrete_train_preds, train_match_results)],
                      'Test NLL': [nll(elo_test_preds, test_match_results),
-                                   nll(glicko_test_preds, test_match_results),
+                                   nll(exkf_test_preds, train_match_results),
                                    nll(ts_test_preds, test_match_results),
                                    nll(lsmc_test_preds, test_match_results),
                                    nll(discrete_test_preds, test_match_results)]})
 
 print('Unsorted')
 print(nlls)
-
-print('Sorted by Train NLL')
-print(nlls.sort_values(by='Train NLL', ascending=False))
-
-print('Sorted by Test NLL')
-print(nlls.sort_values(by='Test NLL', ascending=False))
 

@@ -90,20 +90,62 @@ discrete_tau_linsp = m * 10 ** jnp.linspace(-5, 0, resolution)
 # discrete_init_ax.legend(title='$\\sigma^2_d$')
 
 
+elo_k_linsp = 10 ** jnp.linspace(-3, 0, resolution)
+
+elo_mls = jnp.zeros(len(elo_k_linsp))
+glicko_mls = jnp.zeros((len(init_var_linsp), len(tau_linsp)))
+exkf_mls = jnp.zeros((len(init_var_linsp), len(tau_linsp)))
 trueskill_mls = jnp.zeros((len(init_var_linsp), len(tau_linsp)))
 lsmc_mls = jnp.zeros_like(trueskill_mls)
 discrete_mls = jnp.zeros_like(trueskill_mls)
 
 trueskill_times = jnp.zeros_like(trueskill_mls)
+exkf_times = jnp.zeros_like(trueskill_mls)
 lsmc_times = jnp.zeros_like(trueskill_mls)
 discrete_times = jnp.zeros_like(trueskill_mls)
 
+
+for i, k_temp in enumerate(elo_k_linsp):
+    start = time()
+    init_elo_skills = jnp.zeros(n_players)
+    elo_filter_out = filter_sweep_data(
+        models.elo.filter, init_player_skills=init_elo_skills,
+        static_propagate_params=None, static_update_params=[s, k_temp,  0])
+    elo_mls = elo_mls.at[i].set(sum_log_result_probs(elo_filter_out[2]))
+    end = time()
+    print(i, 'Elo', elo_mls[i], end - start)
+
+
+elo_fig, elo_ax = plt.subplots()
+elo_ax.plot(jnp.log10(elo_k_linsp), elo_mls)
+elo_ax.set_xlabel('$\\log_{10} k$')
+elo_ax.set_title('WTA, Elo')
+elo_fig.tight_layout()
+print(elo_mls.max())
+print('Elo optimal k: ', elo_k_linsp[elo_mls.argmax()])
 
 
 for i, init_var_temp in enumerate(init_var_linsp):
     for j, tau_temp in enumerate(tau_linsp):
         init_player_skills_and_var = jnp.vstack([jnp.zeros(n_players),
                                                  jnp.ones(n_players) * init_var_temp]).T
+        start = time()
+        glicko_filter_out = filter_sweep_data(
+            models.glicko.filter, init_player_skills=init_player_skills_and_var,
+            static_propagate_params=[tau_temp, init_var_temp], static_update_params=[s, 0])
+        end = time()
+        glicko_mls = glicko_mls.at[i, j].set(sum_log_result_probs(glicko_filter_out[2]))
+        print(i, j, 'Glicko', glicko_mls[i, j], end - start)
+
+        start = time()
+        exkf_filter_out = filter_sweep_data(
+            models.extended_kalman.filter, init_player_skills=init_player_skills_and_var,
+            static_propagate_params=tau_temp, static_update_params=[s, epsilon])
+        end = time()
+        exkf_mls = exkf_mls.at[i, j].set(sum_log_result_probs(exkf_filter_out[2]))
+        exkf_times = exkf_times.at[i, j].set(end - start)
+        print(i, j, 'ExKF', exkf_mls[i, j], exkf_times[i, j])
+        
         start = time()
         trueskill_filter_out = filter_sweep_data(
             models.trueskill.filter, init_player_skills=init_player_skills_and_var,
@@ -145,16 +187,26 @@ jnp.save(results_dir + 'tennis_discrete_mls.npy', discrete_mls)
 jnp.save(results_dir + 'tennis_discrete_times.npy', discrete_times)
 
 
-n_em_steps = 20
+n_em_steps = 100
 
 ts_em_init_init_var = 10 ** -1.75
-ts_em_init_init_tau = 10 ** -1.25
+ts_em_init_tau = 10 ** -1.25
+
+# ts_em_init_init_var = 10 ** -0.5
+# ts_em_init_tau = 10 ** -1.75
+
+
+exkf_em_out = abile.expectation_maximisation(
+    models.extended_kalman.initiator, models.extended_kalman.filter,
+    models.extended_kalman.smoother, models.extended_kalman.maximiser, [0., ts_em_init_init_var],
+    ts_em_init_tau, [s, epsilon],
+    train_match_times, train_match_player_indices, train_match_results, n_em_steps)
 
 
 trueskill_em_out = abile.expectation_maximisation(
     models.trueskill.initiator, models.trueskill.filter, models.trueskill.smoother, models.
     trueskill.maximiser, [0., ts_em_init_init_var],
-    ts_em_init_init_tau, [s, epsilon],
+    ts_em_init_tau, [s, epsilon],
     train_match_times, train_match_player_indices, train_match_results, n_em_steps)
 
 
@@ -165,7 +217,7 @@ with open(results_dir + 'tennis_trueskill_em.pickle', 'wb') as f:
 lsmc_em_out = abile.expectation_maximisation(
     models.lsmc.initiator, models.lsmc.filter, models.lsmc.smoother, models.lsmc.maximiser,
     [0., ts_em_init_init_var],
-    ts_em_init_init_tau, [s, epsilon],
+    ts_em_init_tau, [s, epsilon],
     train_match_times, train_match_player_indices, train_match_results, n_em_steps)
 
 with open(results_dir + 'tennis_lsmc_em.pickle', 'wb') as f:
@@ -206,6 +258,27 @@ with open(results_dir + 'tennis_discrete_em.pickle', 'rb') as f:
 def matrix_argmax(mat):
     return jnp.unravel_index(mat.argmax(), mat.shape)
 
+
+glicko_fig, glicko_ax = plt.subplots()
+glicko_ax.pcolormesh(jnp.log10(tau_linsp), jnp.log10(init_var_linsp), glicko_mls)
+glicko_mls_argmax = matrix_argmax(glicko_mls)
+glicko_ax.scatter(jnp.log10(tau_linsp[glicko_mls_argmax[1]]),
+                  jnp.log10(init_var_linsp[glicko_mls_argmax[0]]), c='red')
+glicko_ax.set_title('WTA, Glicko')
+glicko_ax.set_xlabel('$\log_{10} \\tau$')
+glicko_ax.set_ylabel('$\\log_{10} \sigma^2$')
+glicko_fig.tight_layout()
+
+exkf_fig, exkf_ax = plt.subplots()
+exkf_ax.pcolormesh(jnp.log10(tau_linsp), jnp.log10(init_var_linsp), exkf_mls)
+exkf_mls_argmax = matrix_argmax(exkf_mls)
+exkf_ax.scatter(jnp.log10(tau_linsp[exkf_mls_argmax[1]]),
+              jnp.log10(init_var_linsp[exkf_mls_argmax[0]]), c='red')
+exkf_ax.scatter(jnp.log10(exkf_em_out[1]), jnp.log10(exkf_em_out[0][:, 1]), c='grey')
+exkf_ax.set_title('WTA, ExKF')
+exkf_ax.set_xlabel('$\log_{10} \\tau$')
+exkf_ax.set_ylabel('$\\log_{10} \sigma^2$')
+exkf_fig.tight_layout()
 
 ts_fig, ts_ax = plt.subplots()
 ts_ax.pcolormesh(jnp.log10(tau_linsp), jnp.log10(init_var_linsp), trueskill_mls)

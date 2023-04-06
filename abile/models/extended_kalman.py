@@ -30,15 +30,18 @@ def initiator(num_players: int,
 
 
 
-def sigmoid(z: float, s: float = 1.) -> float:
-    return 1 / (1 + jnp.exp(-z/s))
+def logistic(z: float) -> float:
+    return 1 / (1 + jnp.exp(-z))
+
+
+sigmoid = logistic
 
 
 def obs_probs(skill_diff: float,
               s_and_epsilon: jnp.ndarray) -> jnp.ndarray:
     s, epsilon = s_and_epsilon
-    p1 = sigmoid(skill_diff - epsilon, s)
-    p1_plus_pdraw = sigmoid(skill_diff + epsilon, s)
+    p1 = sigmoid((skill_diff - epsilon)/ s)
+    p1_plus_pdraw = sigmoid((skill_diff + epsilon)/ s)
     p2 = 1 - p1_plus_pdraw
     pdraw = p1_plus_pdraw - p1
     return jnp.array([pdraw, p1, p2])

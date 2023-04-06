@@ -28,6 +28,11 @@ epsilon_prior_alpha: float = 1.
 epsilon_prior_beta: float = 0.
 
 
+def inverse_probit(z: float) -> float:
+    return norm.cdf(z)
+
+sigmoid = inverse_probit
+
 def initiator(num_players: int,
               init_mean_and_var: jnp.ndarray,
               random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -47,8 +52,8 @@ def predict(skill_p1: jnp.ndarray,
             skill_p2: jnp.ndarray,
             s_and_epsilon: jnp.ndarray) -> jnp.ndarray:
     s, epsilon = s_and_epsilon
-    p_vp1 = norm.cdf((skill_p1 - skill_p2 - epsilon) / s)
-    p_vp2 = 1 - norm.cdf((skill_p1 - skill_p2 + epsilon) / s)
+    p_vp1 = sigmoid((skill_p1 - skill_p2 - epsilon) / s)
+    p_vp2 = 1 - sigmoid((skill_p1 - skill_p2 + epsilon) / s)
     p_draw = 1 - p_vp1 - p_vp2
     return jnp.array([p_draw, p_vp1, p_vp2])
 
