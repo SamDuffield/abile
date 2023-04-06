@@ -8,7 +8,7 @@ from scipy.optimize import minimize
 from abile import get_basic_filter, times_and_skills_by_player_to_by_match
 from .trueskill import smoother, gauss_hermite_integration
 from .trueskill import maximiser as ts_maximiser
-
+from . import sigmoids
 
 # skills.shape = (number of players, 2)         1 row for skill mean, 1 row for skill variance
 # match_result in (0 for draw, 1 for p1 victory, 2 for p2 victory)
@@ -23,18 +23,13 @@ init_time: Union[float, jnp.ndarray] = 0.
 gauss_hermite_degree: int = 20
 
 
+sigmoid = sigmoids.logistic
+
+
 def initiator(num_players: int,
               init_means_and_vars: jnp.ndarray,
               _: Any = None) -> Tuple[jnp.ndarray, jnp.ndarray]:
     return jnp.zeros(num_players) + init_time, init_means_and_vars * jnp.ones((num_players, 2))
-
-
-
-def logistic(z: float) -> float:
-    return 1 / (1 + jnp.exp(-z))
-
-
-sigmoid = logistic
 
 
 def obs_probs(skill_diff: float,

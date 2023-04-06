@@ -256,6 +256,7 @@ with open(results_dir + 'tennis_discrete_em.pickle', 'rb') as f:
 
 
 def matrix_argmax(mat):
+    mat = jnp.where(jnp.isfinite(mat), mat, -jnp.inf)
     return jnp.unravel_index(mat.argmax(), mat.shape)
 
 
@@ -273,7 +274,7 @@ exkf_fig, exkf_ax = plt.subplots()
 exkf_ax.pcolormesh(jnp.log10(tau_linsp), jnp.log10(init_var_linsp), exkf_mls)
 exkf_mls_argmax = matrix_argmax(exkf_mls)
 exkf_ax.scatter(jnp.log10(tau_linsp[exkf_mls_argmax[1]]),
-              jnp.log10(init_var_linsp[exkf_mls_argmax[0]]), c='red')
+                jnp.log10(init_var_linsp[exkf_mls_argmax[0]]), c='red')
 exkf_ax.scatter(jnp.log10(exkf_em_out[1]), jnp.log10(exkf_em_out[0][:, 1]), c='grey')
 exkf_ax.set_title('WTA, ExKF')
 exkf_ax.set_xlabel('$\log_{10} \\tau$')

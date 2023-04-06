@@ -140,7 +140,7 @@ nlls = pd.DataFrame({'Model': ['Elo', 'Glicko', 'ExKF', 'Trueskill', 'LSMC', 'Di
                                    nll(discrete_train_preds, train_match_results)],
                      'Test NLL': [nll(elo_test_preds, test_match_results),
                                    nll(glicko_test_preds, test_match_results),
-                                   nll(exkf_test_preds, train_match_results),
+                                   nll(exkf_test_preds, test_match_results),
                                    nll(ts_test_preds, test_match_results),
                                    nll(lsmc_test_preds, test_match_results),
                                    nll(discrete_test_preds, test_match_results)]})

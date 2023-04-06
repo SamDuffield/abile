@@ -1,12 +1,12 @@
 from typing import Tuple, Sequence, Union
 
 from jax import numpy as jnp, random, vmap
-from jax.scipy.stats import norm
 # from jax.scipy.optimize import minimize
 from scipy.optimize import minimize
 
 from abile import get_random_filter
 from abile import times_and_skills_by_player_to_by_match
+from . import sigmoids
 
 # skills.shape = (number of players, number of particles)
 # match_result in (0 for draw, 1 for p1 victory, 2 for p2 victory)
@@ -28,10 +28,7 @@ epsilon_prior_alpha: float = 1.
 epsilon_prior_beta: float = 0.
 
 
-def inverse_probit(z: float) -> float:
-    return norm.cdf(z)
-
-sigmoid = inverse_probit
+sigmoid = sigmoids.inverse_probit
 
 def initiator(num_players: int,
               init_mean_and_var: jnp.ndarray,
