@@ -15,6 +15,7 @@ from abile.smoothing import times_and_skills_by_player_to_by_match
 from abile.smoothing import expectation_maximisation
 
 from abile import models
+from abile.models import sigmoids
 
 del version
 
