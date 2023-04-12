@@ -1,5 +1,6 @@
 from functools import partial
 from jax import numpy as jnp, random, jit
+from jax.scipy.stats import norm
 import matplotlib.pyplot as plt
 
 import abile
@@ -72,9 +73,8 @@ player_times, elo_filter_by_player = abile.times_and_skills_by_match_to_by_playe
 
 times_single = player_times[player_id]
 plot_times_start = jnp.where(times_single > plot_times[0])[0][0]
-# plot_times_end = jnp.where(times_single > plot_times[1])[0][0]
-plot_times_end = None
-elo_filter_single = elo_filter_by_player[player_id]
+plot_times_end = jnp.where(times_single > plot_times[1])[0][0] if plot_times[1] is not None else None
+elo_filter_single = elo_filter_by_player[player_id][plot_times_start:plot_times_end]
 
 # Run Trueskill
 _, init_ts_skills_and_var = models.trueskill.initiator(
@@ -95,6 +95,9 @@ ts_smoother_single, _ = abile.smoother_sweep(models.trueskill.smoother,
                                              ts_filter_single,
                                              ts_tau)
 
+ts_filter_single_plot = ts_filter_single[plot_times_start:plot_times_end]
+ts_smoother_single_plot = ts_smoother_single[plot_times_start:plot_times_end]
+
 
 # Run LSMC
 _, init_lsmc_skills = models.lsmc.initiator(
@@ -114,28 +117,103 @@ lsmc_smoother_single, _ = abile.smoother_sweep(models.lsmc.smoother,
                                                times_single,
                                                lsmc_filter_single,
                                                lsmc_tau)
+lsmc_filter_single_plot = lsmc_filter_single[plot_times_start:plot_times_end]
+lsmc_smoother_single_plot = lsmc_smoother_single[plot_times_start:plot_times_end]
+
+
+# Run Discrete
+_, init_discrete_skills = models.discrete.initiator(n_players, discrete_init_var)
+discrete_filter_out = filter_sweep_data(
+    models.discrete.filter, init_player_skills=init_discrete_skills, static_propagate_params=discrete_tau,
+    static_update_params=[discrete_s, epsilon])
+
+_, discrete_filter_by_player = abile.times_and_skills_by_match_to_by_player(init_player_times,
+                                                                      init_discrete_skills,
+                                                                      match_times,
+                                                                      match_player_indices,
+                                                                      discrete_filter_out[0],
+                                                                      discrete_filter_out[1])
+discrete_filter_single = discrete_filter_by_player[player_id]
+discrete_smoother_single, _ = abile.smoother_sweep(models.discrete.smoother,
+                                               times_single,
+                                               discrete_filter_single,
+                                               discrete_tau)
+discrete_filter_single_plot = discrete_filter_single[plot_times_start:plot_times_end]
+discrete_smoother_single_plot = discrete_smoother_single[plot_times_start:plot_times_end]
+
+
+def gen_fig():
+    
+    xlabs = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F']
+    
+    fig, axes = plt.subplots(1, len(elo_filter_single), sharey=True)
+    for i in range(len(elo_filter_single)):
+        axes[i].set_xticklabels([])
+        axes[i].set_xticks([])
+        axes[i].spines['top'].set_visible(False)
+        axes[i].spines['right'].set_visible(False)
+        axes[i].set_yticks([])
+        axes[i].set_xlabel(xlabs[i])
+        if i != 0:
+            axes[i].yaxis.set_visible(False)
+            axes[i].spines['left'].set_visible(False)
+    return fig, axes
+
+
+filter_colour = 'purple'
+smoother_colour = 'forestgreen'
+
+elo_fig, elo_axes = gen_fig()
+for i in range(len(elo_axes)):
+    elo_axes[i].scatter(0, elo_filter_single[i], c=filter_colour)
+elo_axes[0].set_ylim([elo_filter_single.min() - 0.1, elo_filter_single.max() + 0.1])
+elo_axes[0].set_ylabel('Elo')
+elo_fig.tight_layout()
+elo_fig.savefig('results/tennis_elo_single.pdf', dpi=300)
+
+
+lw = 3
+ts_min = ts_filter_single_plot[:, 0].min() - ts_filter_single_plot[:, 1].max() * 5
+ts_max = ts_filter_single_plot[:, 0].max() + ts_filter_single_plot[:, 1].max() * 5
+ts_linsp = jnp.linspace(ts_min, ts_max, 300)
+ts_fig, ts_axes = gen_fig()
+for i in range(len(ts_axes)):
+    ts_axes[i].plot(
+        norm.pdf(ts_linsp, ts_smoother_single_plot[i, 0], jnp.sqrt(ts_smoother_single_plot[i, 1])),
+        ts_linsp,
+        alpha=0.5, c=smoother_colour, linewidth=lw)
+    ts_axes[i].plot(
+        norm.pdf(ts_linsp, ts_filter_single_plot[i, 0], jnp.sqrt(ts_filter_single_plot[i, 1])),
+        ts_linsp,
+        alpha=0.5, c=filter_colour, lw=lw)
+ts_axes[0].set_ylabel('TrueSkill')
+ts_fig.tight_layout()
+ts_fig.savefig('results/tennis_trueskill_single.pdf', dpi=300)
 
 
 
-elo_fig, elo_ax = plt.subplots()
-elo_ax.plot(times_single[plot_times_start:plot_times_end], elo_filter_single[plot_times_start:plot_times_end])
-
-ts_fig, ts_ax = plt.subplots()
-ts_ax.fill_between(times_single[plot_times_start:plot_times_end],
-                   ts_filter_single[plot_times_start:plot_times_end, 0] - jnp.sqrt(ts_filter_single[plot_times_start:plot_times_end, 1]),
-                   ts_filter_single[plot_times_start:plot_times_end, 0] + jnp.sqrt(ts_filter_single[plot_times_start:plot_times_end, 1]),
-                   alpha=0.4)
-ts_ax.plot(times_single[plot_times_start:plot_times_end], ts_filter_single[plot_times_start:plot_times_end, 0])
-ts_ax.fill_between(times_single[plot_times_start:plot_times_end],
-                   ts_smoother_single[plot_times_start:plot_times_end, 0] - jnp.sqrt(ts_smoother_single[plot_times_start:plot_times_end, 1]),
-                   ts_smoother_single[plot_times_start:plot_times_end, 0] + jnp.sqrt(ts_smoother_single[plot_times_start:plot_times_end, 1]),
-                   alpha=0.4)
-ts_ax.plot(times_single[plot_times_start:plot_times_end], ts_smoother_single[plot_times_start:plot_times_end, 0])
+bns = 40
+lsmc_fig, lsmc_axes = gen_fig()
+for i in range(len(lsmc_axes)):
+    lsmc_axes[i].hist(lsmc_smoother_single_plot[i], bins=bns, density=True,
+                      color=smoother_colour, orientation='horizontal', alpha=0.5)
+    lsmc_axes[i].hist(lsmc_filter_single_plot[i], bins=bns, density=True,
+                      color=filter_colour, orientation='horizontal', alpha=0.5)
+lsmc_axes[0].set_ylim([lsmc_filter_single_plot.min(), lsmc_filter_single_plot.max()])
+lsmc_axes[0].set_ylabel('SMC')
+lsmc_fig.tight_layout()
+lsmc_fig.savefig('results/tennis_lsmc_single.pdf', dpi=300)
 
 
-lsmc_fig, lsmc_ax = plt.subplots()
-lsmc_ax.plot(times_single[plot_times_start:plot_times_end], lsmc_filter_single[plot_times_start:plot_times_end].mean(1))
-lsmc_ax.plot(times_single[plot_times_start:plot_times_end], lsmc_smoother_single[plot_times_start:plot_times_end].mean(1))
+dis_fig, dis_axes = gen_fig()
+for i in range(len(lsmc_axes)):
+    dis_axes[i].barh(jnp.arange(m), discrete_smoother_single_plot[i],
+                      color=smoother_colour, alpha=0.5)
+    dis_axes[i].barh(jnp.arange(m), discrete_filter_single_plot[i],
+                      color=filter_colour, alpha=0.5)
+dis_axes[0].set_ylabel('Discrete')
+dis_fig.tight_layout()
+dis_fig.savefig('results/tennis_discrete_single.pdf', dpi=300)
 
 
 plt.show(block=True)
