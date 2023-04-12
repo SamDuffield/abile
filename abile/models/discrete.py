@@ -8,6 +8,7 @@ from scipy.optimize import minimize
 
 from abile import get_basic_filter
 from abile import times_and_skills_by_player_to_by_match
+from . import sigmoids
 
 init_time: float = 0.
 M: int
@@ -16,6 +17,9 @@ min_prob: float = 1e-10
 
 psi: jnp.ndarray
 lambdas: jnp.ndarray
+
+
+sigmoid = sigmoids.inverse_probit
 
 
 def psi_computation(M_new: int = None):
@@ -87,8 +91,8 @@ def Phi_emission(s, epsilon):
     skills_matrix = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1)) * jnp.ones((1, M))
     skills_diff = (skills_matrix - jnp.transpose(skills_matrix)) / s
 
-    phi_vic = jnp.reshape(norm.cdf(skills_diff - epsilon / s), (M, M, 1))
-    phi_los = jnp.reshape(1 - norm.cdf(skills_diff + epsilon / s), (M, M, 1))
+    phi_vic = jnp.reshape(sigmoid(skills_diff - epsilon / s), (M, M, 1))
+    phi_los = jnp.reshape(1 - sigmoid(skills_diff + epsilon / s), (M, M, 1))
 
     return jnp.concatenate((1 - phi_vic - phi_los, phi_vic, phi_los), axis=2)
 

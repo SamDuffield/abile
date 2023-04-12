@@ -51,12 +51,12 @@ discrete_s = m / 5
 
 
 @jit
-def sum_log_result_probs(predict_probs):
+def lml(predict_probs):
     rps = jnp.array([predict_probs[i, train_match_results[i]] for i in range(n_matches)])
-    return jnp.log(rps).sum()
+    return jnp.log(rps).mean()
 
 
-print('Uniform predictions:', sum_log_result_probs(jnp.ones((n_matches, 3)) / 3))
+print('Uniform predictions:', lml(jnp.ones((n_matches, 3)) / 3))
 
 
 def matrix_argmax(mat):
@@ -74,7 +74,7 @@ for i, k_temp in enumerate(elo_k_linsp):
         elo_filter_out = filter_sweep_data(
             models.elo.filter, init_player_skills=init_elo_skills,
             static_propagate_params=None, static_update_params=[s, k_temp,  kap_temp])
-        elo_mls = elo_mls.at[i, j].set(sum_log_result_probs(elo_filter_out[2]))
+        elo_mls = elo_mls.at[i, j].set(lml(elo_filter_out[2]))
         print(i, j, 'Elo', elo_mls[i, j])
 
 elo_fig, elo_ax = plt.subplots()
@@ -84,7 +84,7 @@ elo_ax.pcolormesh(
     elo_mls)
 elo_mls_argmax = matrix_argmax(elo_mls)
 elo_ax.scatter(jnp.log10(elo_kappa_linsp[elo_mls_argmax[1]]),
-                  jnp.log10(elo_k_linsp[elo_mls_argmax[0]]), c='red')
+               jnp.log10(elo_k_linsp[elo_mls_argmax[0]]), c='red')
 elo_ax.set_xlabel('$\log_{10} \\kappa$')
 elo_ax.set_ylabel('$\log_{10} k$')
 print(elo_mls.max())
