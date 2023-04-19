@@ -1,7 +1,8 @@
 from typing import Tuple, Any, Sequence, Union
 from functools import partial
 
-from jax import numpy as jnp, grad, vmap, hessian
+from jax import numpy as jnp, grad, vmap, hessian, random
+from jax.lax import scan
 # from jax.scipy.optimize import minimize
 from scipy.optimize import minimize
 
@@ -48,7 +49,7 @@ def single_obs_probs(skill_diff: float,
     return obs_probs(skill_diff, s_and_epsilon)[match_result]
 
 
-def log_single_obs_probs(skill_p1_p2: float,
+def log_single_obs_probs(skill_p1_p2: jnp.ndarray,
                          match_result: int,
                          s_and_epsilon: jnp.ndarray) -> float:
     skill_p1, skill_p2 = skill_p1_p2
@@ -165,3 +166,56 @@ def maximiser(times_by_player: Sequence,
     
     return maxed_initial_params, maxed_tau, maxed_s_and_epsilon
     
+
+def simulate(init_player_times: jnp.ndarray,
+             init_player_skills: jnp.ndarray,
+             match_times: jnp.ndarray,
+             match_player_indices_seq: jnp.ndarray,
+             tau: float,
+             s_and_epsilon: Union[jnp.ndarray, Sequence],
+             random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    s, epsilon = s_and_epsilon
+
+    def scan_body(carry,
+                  match_ind: int) \
+            -> Tuple[Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
+        player_times, player_skills, int_random_key = carry
+
+        int_random_key, prop_key_p1, prop_key_p2, match_key = random.split(int_random_key, 4)
+
+        match_time = match_times[match_ind]
+        match_player_indices = match_player_indices_seq[match_ind]
+
+        skill_p1 = player_skills[match_player_indices[0]] \
+                   + tau * jnp.sqrt(match_time - player_times[match_player_indices[0]]) * random.normal(prop_key_p1)
+        skill_p2 = player_skills[match_player_indices[1]] \
+                   + tau * jnp.sqrt(match_time - player_times[match_player_indices[1]]) * random.normal(prop_key_p2)
+
+        z = skill_p1 - skill_p2
+
+        pz_smaller_than_epsilon = sigmoid((z + epsilon) / s)
+        pz_smaller_than_minus_epsilon = sigmoid((z - epsilon) / s)
+
+        pdraw = pz_smaller_than_epsilon - pz_smaller_than_minus_epsilon
+        p_vp1 = pz_smaller_than_minus_epsilon
+        p_vp2 = 1 - pz_smaller_than_epsilon
+
+        ps = jnp.array([pdraw, p_vp1, p_vp2])
+
+        result = random.choice(match_key, a=jnp.arange(3), p=ps)
+
+        new_player_times = player_times.at[match_player_indices].set(match_time)
+        new_player_skills = player_skills.at[match_player_indices[0]].set(skill_p1)
+        new_player_skills = new_player_skills.at[match_player_indices[1]].set(skill_p2)
+
+        return (new_player_times, new_player_skills, int_random_key), \
+            (skill_p1, skill_p2, result)
+
+    _, out_stack = scan(scan_body,
+                        (init_player_times, init_player_skills, random_key),
+                        jnp.arange(len(match_times)))
+
+    out_skills_ind0, out_skills_ind1, results = out_stack
+
+    return out_skills_ind0, out_skills_ind1, results
+

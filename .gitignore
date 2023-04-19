@@ -137,5 +137,8 @@ dmypy.json
 # Notebook
 .ipynb
 
+# Visual Studio Code
+.vscode/
+
 archive/
 results/
