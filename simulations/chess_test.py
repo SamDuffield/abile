@@ -17,7 +17,7 @@ models.discrete.psi_computation(m)
 
 s = 1.
 
-elo_k = 0.0009102982
+elo_k = 0.007196858
 elo_kappa = 5.1794744
 
 exkf_init_var = 0.05576394

@@ -3,16 +3,14 @@ from typing import Tuple, Any
 from jax import numpy as jnp
 
 from abile import get_basic_filter
-from .elo import sigma
 
 # skills.shape = (number of players, 2)         1 row for skill mean, 1 row for skill variance
 # match_result in (0 for draw, 1 for p1 victory, 2 for p2 victory)
 # static_propagate_params = (tau, max_skill_var)
 #       tau = some measure of variability in skill over time
 #       max_var = cap on variance of skill (i.e. variance of unrated player)
-# static_update_params = (s, k)
+# static_update_params = s
 #       s = some measure of variability in performance
-#       kappa = draw parameter (0 for no draws, normally 2 for draws)
 
 
 def propagate(skills: jnp.ndarray,
@@ -29,14 +27,12 @@ def propagate(skills: jnp.ndarray,
 def update(skill_p1: jnp.ndarray,
            skill_p2: jnp.ndarray,
            match_result: int,
-           s_and_kappa: Any,
+           s: Any,
            __: Any) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     # see The Glicko system for equations
-    # draw probabilities extension based on Elo-Davidson
-    s, kappa = s_and_kappa
     q = jnp.log(10) / s
 
-    w_p1 = jnp.where(match_result == 0, 0.5, 2)
+    w_p1 = jnp.where(match_result == 0, 0.5, 0)
     w_p1 = jnp.where(match_result == 1, 1, w_p1)
     w_p2 = 1 - w_p1
 
@@ -46,10 +42,10 @@ def update(skill_p1: jnp.ndarray,
     g_p1 = 1 / jnp.sqrt(1 + 3 * q ** 2 * var_p1 / (jnp.pi ** 2))
     g_p2 = 1 / jnp.sqrt(1 + 3 * q ** 2 * var_p2 / (jnp.pi ** 2))
 
-    prob_vp1 = sigma(g_p1 * (mu_p1 - mu_p2), s*2, kappa)
-    prob_vp2 = sigma(g_p2 * (mu_p2 - mu_p1), s*2, kappa)
-    prob_draw = 1 - prob_vp1 - prob_vp2
-    prob_draw = jnp.where(kappa == 0, 0, prob_draw)
+    prob_vp1 = 1 / (1 + 10 ** -(g_p1 * (mu_p1 - mu_p2) / s))
+    prob_vp2 = 1 - prob_vp1
+    # prob_vp2 = 1 / (1 + 10 ** -(g_p2 * (mu_p2 - mu_p1) / s))
+    prob_draw = 0.
 
     d2_p1 = 1 / (q ** 2 * g_p1 ** 2 * prob_vp1 * (1 - prob_vp1))
 

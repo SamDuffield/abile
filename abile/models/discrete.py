@@ -10,6 +10,14 @@ from abile import get_basic_filter
 from abile import times_and_skills_by_player_to_by_match
 from . import sigmoids
 
+# skills.shape = (number of players, number of discrete states)
+# match_result in (0 for draw, 1 for p1 victory, 2 for p2 victory)
+# static_propagate_params = (tau,)
+#       tau = rate of dynamics
+# static_update_params = (s, epsilon)
+#       s = standard deviation of performance
+#       epsilon = draw margin
+
 init_time: float = 0.
 M: int
 grad_step_size: float = 1e-3

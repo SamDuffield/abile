@@ -1,7 +1,7 @@
 from typing import Tuple, Any, Union, Sequence, Callable
 from functools import partial
 
-from jax import numpy as jnp, random
+from jax import numpy as jnp, random, jit
 from jax.scipy.stats import norm
 from jax.lax import scan
 # from jax.scipy.optimize import minimize
@@ -151,7 +151,8 @@ def smoother(filter_skill_t: jnp.ndarray,
 
     kalman_gain = filter_t_var / (filter_t_var + propagate_var)
     smooth_t_mu = filter_t_mu + kalman_gain * (smooth_tp1_mu - filter_t_mu)
-    smooth_t_var = filter_t_var + kalman_gain * (smooth_tp1_var - filter_t_var - propagate_var) * kalman_gain
+    smooth_t_var = filter_t_var + kalman_gain * (
+        smooth_tp1_var - filter_t_var - propagate_var) * kalman_gain
 
     # e_xt_xtp1 = filter_t_mu * smooth_tp1_mu \
     #             + kalman_gain * (smooth_tp1_var + (smooth_tp1_mu - filter_t_mu) * smooth_tp1_mu)
@@ -162,7 +163,8 @@ def smoother(filter_skill_t: jnp.ndarray,
 
 
 def get_sum_t1_diffs_single(times: jnp.ndarray,
-                            smoother_skills_and_extra: Tuple[jnp.ndarray, jnp.ndarray]) -> Tuple[int, float]:
+                            smoother_skills_and_extra: Tuple[jnp.ndarray, jnp.ndarray]) -> Tuple[int,
+                                                                                                 float]:
     smoother_skills, lag1_es = smoother_skills_and_extra
     time_diff = times[1:] - times[:-1]
 
@@ -178,6 +180,7 @@ def get_sum_t1_diffs_single(times: jnp.ndarray,
     return (~bad_inds).sum(), jnp.where(bad_inds, 0, smoother_diff_div_time_diff).sum()
 
 
+@partial(jit, static_argnums=(2, 4))
 def gauss_hermite_integration(mean: jnp.ndarray,
                               sd: jnp.ndarray,
                               integrand: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray],
@@ -237,31 +240,31 @@ def maximiser(times_by_player: Sequence,
         no_draw_bool = (update_params[1] == 0.) and (0 not in match_results)
 
     times_by_player_clean = [t for t in times_by_player if len(t) > 1]
-    smoother_skills_and_extras_by_player_clean = [p for p in smoother_skills_and_extras_by_player if len(p[0]) > 1]
+    smoother_skills_and_extras_by_player_clean = [
+        p for p in smoother_skills_and_extras_by_player if len(p[0]) > 1]
     init_smoothing_skills = jnp.array([p[0][0] for p in smoother_skills_and_extras_by_player_clean])
     max_init_mean = initial_params[0]
     init_var_num = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
                     - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).sum() \
-                   + 2 * init_var_inv_prior_beta
+        + 2 * init_var_inv_prior_beta
     init_var_denom = len(init_smoothing_skills) + 2 * (init_var_inv_prior_alpha - 1)
     max_init_var = init_var_num / init_var_denom
     # max_init_var = (init_smoothing_skills[:, 1] + init_smoothing_skills[:, 0] ** 2
     #                 - 2 * init_smoothing_skills[:, 0] * max_init_mean + max_init_mean ** 2).mean()
     maxed_initial_params = jnp.array([max_init_mean, max_init_var])
 
-    num_diff_terms_and_diff_sums = jnp.array([get_sum_t1_diffs_single(t, se)
-                                              for t, se in
-                                              zip(times_by_player_clean, smoother_skills_and_extras_by_player_clean)])
-    maxed_tau = jnp.sqrt((num_diff_terms_and_diff_sums[:, 1].sum() + 2 * tau2_inv_prior_beta)
-                         / (num_diff_terms_and_diff_sums[:, 0].sum() + 2 * (tau2_inv_prior_alpha - 1)))
+    num_diff_terms_and_diff_sums = jnp.array([get_sum_t1_diffs_single(t, se) for t, se in zip(
+        times_by_player_clean, smoother_skills_and_extras_by_player_clean)])
+    maxed_tau = jnp.sqrt(
+        (num_diff_terms_and_diff_sums[:, 1].sum() + 2 * tau2_inv_prior_beta) /
+        (num_diff_terms_and_diff_sums[:, 0].sum() + 2 * (tau2_inv_prior_alpha - 1)))
 
     if no_draw_bool:
         maxed_s_and_epsilon = update_params
     else:
         smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player]
-        match_times, match_skills_p1, match_skills_p2 = times_and_skills_by_player_to_by_match(times_by_player,
-                                                                                               smoother_skills_by_player,
-                                                                                               match_player_indices_seq)
+        match_times, match_skills_p1, match_skills_p2 = times_and_skills_by_player_to_by_match(
+            times_by_player, smoother_skills_by_player, match_player_indices_seq)
 
         def negative_expected_log_obs_dens(log_epsilon: jnp.ndarray) -> float:
             s_and_epsilon = update_params.at[1].set(jnp.exp(log_epsilon[0]))
@@ -278,66 +281,15 @@ def maximiser(times_by_player: Sequence,
             elogp_all = jnp.array([elogp_draw, elogp_vp1, elogp_vp2])
             elogp = elogp_all.T[jnp.arange(len(match_results)), match_results]
             # elogp = jnp.array([e[m] for e, m in zip(elogp_all.T, match_results)])
-            return - (elogp.mean() + ((epsilon_prior_alpha - 1) * log_epsilon[0]
-                                      - epsilon_prior_beta * jnp.exp(log_epsilon[0])) / len(match_results))
+            return -(elogp.mean() +
+                     ((epsilon_prior_alpha - 1) * log_epsilon[0] - epsilon_prior_beta * jnp.exp(
+                         log_epsilon[0])) / len(match_results))
 
-        optim_result = minimize(negative_expected_log_obs_dens, jnp.log(update_params[-1:]), method='cobyla')
+        optim_result = minimize(negative_expected_log_obs_dens,
+                                jnp.log(update_params[-1:]), method='cobyla')
 
         assert optim_result.success, 'epsilon optimisation failed'
         maxed_epsilon = jnp.exp(optim_result.x)[0]
         maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
 
     return maxed_initial_params, maxed_tau, maxed_s_and_epsilon
-
-
-def simulate(init_player_times: jnp.ndarray,
-             init_player_skills: jnp.ndarray,
-             match_times: jnp.ndarray,
-             match_player_indices_seq: jnp.ndarray,
-             tau: float,
-             s_and_epsilon: Union[jnp.ndarray, Sequence],
-             random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    s, epsilon = s_and_epsilon
-
-    def scan_body(carry,
-                  match_ind: int) \
-            -> Tuple[Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
-        player_times, player_skills, int_random_key = carry
-
-        int_random_key, prop_key_p1, prop_key_p2, match_key = random.split(int_random_key, 4)
-
-        match_time = match_times[match_ind]
-        match_player_indices = match_player_indices_seq[match_ind]
-
-        skill_p1 = player_skills[match_player_indices[0]] \
-                   + tau * jnp.sqrt(match_time - player_times[match_player_indices[0]]) * random.normal(prop_key_p1)
-        skill_p2 = player_skills[match_player_indices[1]] \
-                   + tau * jnp.sqrt(match_time - player_times[match_player_indices[1]]) * random.normal(prop_key_p2)
-
-        z = skill_p1 - skill_p2
-
-        pz_smaller_than_epsilon = norm.cdf((z + epsilon) / s)
-        pz_smaller_than_minus_epsilon = norm.cdf((z - epsilon) / s)
-
-        pdraw = pz_smaller_than_epsilon - pz_smaller_than_minus_epsilon
-        p_vp1 = pz_smaller_than_minus_epsilon
-        p_vp2 = 1 - pz_smaller_than_epsilon
-
-        ps = jnp.array([pdraw, p_vp1, p_vp2])
-
-        result = random.choice(match_key, a=jnp.arange(3), p=ps)
-
-        new_player_times = player_times.at[match_player_indices].set(match_time)
-        new_player_skills = player_skills.at[match_player_indices[0]].set(skill_p1)
-        new_player_skills = new_player_skills.at[match_player_indices[1]].set(skill_p2)
-
-        return (new_player_times, new_player_skills, int_random_key), \
-            (skill_p1, skill_p2, result)
-
-    _, out_stack = scan(scan_body,
-                        (init_player_times, init_player_skills, random_key),
-                        jnp.arange(len(match_times)))
-
-    out_skills_ind0, out_skills_ind1, results = out_stack
-
-    return out_skills_ind0, out_skills_ind1, results
