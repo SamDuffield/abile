@@ -20,32 +20,24 @@ s = 1.
 discrete_s = m / 5
 epsilon = 0.
 
-elo_k = 0.055
+# selected with grid search
+elo_k = 0.05455595
 
-glicko_init_var = 0.054
+glicko_init_var = 0.05455595
 glicko_tau = 0.001
 
-# # EM
-# exkf_init_var = 0.09638329
-# exkf_tau = 0.01612104
+# selected with EM
+exkf_init_var = 0.10538987
+exkf_tau = 0.01403827
 
-# grid search
-exkf_init_var = 0.23357216
-exkf_tau = 0.01370383
+ts_init_var = 0.3144468
+ts_tau = 0.021091795
 
-# #  EM
-# ts_init_var = 0.3145898
-# ts_tau = 0.019923497
+lsmc_init_var = 0.15213412
+lsmc_tau = 0.014307213
 
-# grid search
-ts_init_var = 0.14384499
-ts_tau = 0.01370383
-
-lsmc_init_var = 0.14658612
-lsmc_tau = 0.0136376815
-
-discrete_init_var = 1576.0576
-discrete_tau = 1.9800553
+discrete_init_var = 1575.464
+discrete_tau = 2.2277238
 
 
 # Load all tennis data (2019 - 2022)
@@ -85,7 +77,7 @@ init_glicko_skills = jnp.hstack(
      glicko_init_var * jnp.ones((n_players, 1))])
 glicko_filter_out = filter_sweep_data(models.glicko.filter, init_player_skills=init_glicko_skills,
                                       static_propagate_params=[glicko_tau, glicko_init_var],
-                                      static_update_params=[s, 0])
+                                      static_update_params=s)
 glicko_train_preds = glicko_filter_out[-1][:test_start_ind]
 glicko_test_preds = glicko_filter_out[-1][test_start_ind:]
 

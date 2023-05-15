@@ -17,9 +17,11 @@ models.discrete.psi_computation(m)
 
 s = 1.
 
+# selected with grid search
 elo_k = 0.039069396
 elo_kappa = 0.5963623
 
+# selected with EM
 exkf_init_var = 0.13117045
 exkf_tau = 0.00100004
 exkf_epsilon = 0.4741553
