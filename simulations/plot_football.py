@@ -158,7 +158,12 @@ discrete_smoother_single_plot = discrete_smoother_single[plot_times_start:plot_t
 def gen_fig():
     
     # xlabs = ['Group', 'Group', 'Group', 'R32', 'R16', 'QF', 'SF', 'F']
-    xlabs = ['Pre', 'Group', 'Group', 'Group', 'R32', 'R16', 'QF', 'SF', 'F']
+    # xlabs = ['Pre', 'Group', 'Group', 'Group', 'R32', 'R16', 'QF', 'SF', 'F']
+    xlabs = ['Pre-tournament',
+             'Group (L) \n Saudi Arabia', 'Group (W) \n Mexico', 'Group (W) \n Poland',
+             'R16 (W) \n Australia',
+             'QF (D) \n Netherlands', 'SF (W) \n Croatia', 'F (D) \n France']
+    
     
     fig, axes = plt.subplots(1, len(elo_filter_single), sharey=True)
     for i in range(len(elo_filter_single)):
@@ -167,7 +172,7 @@ def gen_fig():
         axes[i].spines['top'].set_visible(False)
         axes[i].spines['right'].set_visible(False)
         axes[i].set_yticks([])
-        axes[i].set_xlabel(xlabs[i])
+        axes[i].set_xlabel(xlabs[i], fontsize=7)
         if i != 0:
             axes[i].yaxis.set_visible(False)
             axes[i].spines['left'].set_visible(False)
@@ -186,7 +191,7 @@ elo_fig.tight_layout()
 elo_fig.savefig('results/football_elo_single.pdf', dpi=300)
 
 
-lw = 3
+lw = 2
 ts_min = ts_filter_single_plot[:, 0].min() - ts_filter_single_plot[:, 1].max() * 5
 ts_max = ts_filter_single_plot[:, 0].max() + ts_filter_single_plot[:, 1].max() * 5
 ts_linsp = jnp.linspace(ts_min, ts_max, 300)
@@ -206,13 +211,13 @@ ts_fig.savefig('results/football_trueskill_single.pdf', dpi=300)
 
 
 
-bns = 40
+bns = 20
 lsmc_fig, lsmc_axes = gen_fig()
 for i in range(len(lsmc_axes)):
     lsmc_axes[i].hist(lsmc_smoother_single_plot[i], bins=bns, density=True,
-                      color=smoother_colour, orientation='horizontal', alpha=0.5)
+                      color=smoother_colour, orientation='horizontal', alpha=0.3)
     lsmc_axes[i].hist(lsmc_filter_single_plot[i], bins=bns, density=True,
-                      color=filter_colour, orientation='horizontal', alpha=0.5)
+                      color=filter_colour, orientation='horizontal', alpha=0.3)
 lsmc_axes[0].set_ylim([lsmc_filter_single_plot.min(), lsmc_filter_single_plot.max()])
 lsmc_axes[0].set_ylabel('SMC')
 lsmc_fig.tight_layout()
@@ -222,9 +227,9 @@ lsmc_fig.savefig('results/football_lsmc_single.pdf', dpi=300)
 dis_fig, dis_axes = gen_fig()
 for i in range(len(lsmc_axes)):
     dis_axes[i].barh(jnp.arange(m), discrete_smoother_single_plot[i],
-                      color=smoother_colour, alpha=0.5)
+                      color=smoother_colour, alpha=0.3)
     dis_axes[i].barh(jnp.arange(m), discrete_filter_single_plot[i],
-                      color=filter_colour, alpha=0.5)
+                      color=filter_colour, alpha=0.3)
 dis_axes[0].set_ylabel('Discrete')
 dis_fig.tight_layout()
 dis_fig.savefig('results/football_discrete_single.pdf', dpi=300)
