@@ -20,20 +20,35 @@ models.discrete.psi_computation(m)
 s = 1.
 discrete_s = m / 5
 
-elo_k = 0.039069396
-elo_kappa = 0.5963623
+# elo_k = 0.039069396
+# elo_kappa = 0.5963623
 
-ts_init_var = 0.34590456
-ts_tau = 0.00721472
-ts_epsilon = 0.3296613
+# ts_init_var = 0.34590456
+# ts_tau = 0.00721472
+# ts_epsilon = 0.3296613
 
-lsmc_init_var =  0.19661216
-lsmc_tau = 0.0064961524
-lsmc_epsilon = 0.31839916
+# lsmc_init_var =  0.19661216
+# lsmc_tau = 0.0064961524
+# lsmc_epsilon = 0.31839916
 
-discrete_init_var = 1998.5474
-discrete_tau = 0.58106744
-discrete_epsilon = 31.9206
+# discrete_init_var = 1998.5474
+# discrete_tau = 0.58106744
+# discrete_epsilon = 31.9206
+
+elo_k = 0.05
+elo_kappa = 0.5
+
+ts_init_var = 0.5
+ts_tau = 0.05
+ts_epsilon = 0.3
+
+lsmc_init_var =  ts_init_var
+lsmc_tau = ts_tau
+lsmc_epsilon = ts_epsilon
+
+discrete_init_var = 2000
+discrete_tau = 10
+discrete_epsilon = 30
 
 
 # Load international football data
@@ -185,15 +200,15 @@ smoother_colour = 'forestgreen'
 elo_fig, elo_axes = gen_fig()
 for i in range(len(elo_axes)):
     elo_axes[i].scatter(0, elo_filter_single[i], c=filter_colour)
-elo_axes[0].set_ylim([elo_filter_single.min() - 0.1, elo_filter_single.max() + 0.1])
+elo_axes[0].set_ylim([elo_filter_single.min() - 0.05, elo_filter_single.max() + 0.05])
 elo_axes[0].set_ylabel('Elo')
 elo_fig.tight_layout()
 elo_fig.savefig('results/football_elo_single.pdf', dpi=300)
 
 
-lw = 2
-ts_min = ts_filter_single_plot[:, 0].min() - ts_filter_single_plot[:, 1].max() * 5
-ts_max = ts_filter_single_plot[:, 0].max() + ts_filter_single_plot[:, 1].max() * 5
+lw = 2.5
+ts_min = ts_filter_single_plot[:, 0].min() - ts_filter_single_plot[:, 1].max() * 3
+ts_max = ts_filter_single_plot[:, 0].max() + ts_filter_single_plot[:, 1].max() * 2
 ts_linsp = jnp.linspace(ts_min, ts_max, 300)
 ts_fig, ts_axes = gen_fig()
 for i in range(len(ts_axes)):
@@ -216,9 +231,9 @@ lsmc_fig, lsmc_axes = gen_fig()
 for i in range(len(lsmc_axes)):
     lsmc_axes[i].hist(lsmc_smoother_single_plot[i], bins=bns, density=True,
                       color=smoother_colour, orientation='horizontal', alpha=0.3)
-    lsmc_axes[i].hist(lsmc_filter_single_plot[i], bins=bns, density=True,
+    lsmc_axes[i].hist(lsmc_filter_single_plot[i], bins=bns, density=True, 
                       color=filter_colour, orientation='horizontal', alpha=0.3)
-lsmc_axes[0].set_ylim([lsmc_filter_single_plot.min(), lsmc_filter_single_plot.max()])
+lsmc_axes[0].set_ylim([ts_min, ts_max])
 lsmc_axes[0].set_ylabel('SMC')
 lsmc_fig.tight_layout()
 lsmc_fig.savefig('results/football_lsmc_single.pdf', dpi=300)
