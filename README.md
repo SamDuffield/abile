@@ -6,7 +6,7 @@ State-space model perspective on rating systems (pairwise comparisons).
 
 Tennis data sourced from [tennis-data.co.uk](http://www.tennis-data.co.uk)
 
-Football data sourced from [football-data.co.uk](https://www.football-data.co.uk/)
+Football data sourced from [football-data.co.uk](https://www.football-data.co.uk/) and [github.com/martj42](https://github.com/martj42/international_results)
 
 Chess data from [github.com/huffyhenry](https://github.com/huffyhenry/forecasting-candidates)
 
