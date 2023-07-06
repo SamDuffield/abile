@@ -106,7 +106,7 @@ for i, init_var_temp in enumerate(init_var_linsp):
         start = time()
         glicko_filter_out = filter_sweep_data(
             models.glicko.filter, init_player_skills=init_player_skills_and_var,
-            static_propagate_params=[tau_temp, init_var_temp], static_update_params=[s, 0])
+            static_propagate_params=[tau_temp, init_var_temp], static_update_params=s)
         end = time()
         glicko_mls = glicko_mls.at[i, j].set(lml(glicko_filter_out[2]))
         glicko_times = glicko_times.at[i, j].set(end - start)

@@ -110,7 +110,7 @@ def initiator(num_players: int,
               _: Any = None) -> Tuple[jnp.ndarray, jnp.ndarray]:
     init_rates = init_rates * jnp.ones(num_players)
 
-    p0 = jnp.zeros(M).at[((M - 1) // 2):((M + 3) // 2)].set(1)
+    p0 = jnp.zeros(M).at[((M - 1) // 2):((M + 2) // 2)].set(1)
     p0 /= p0.sum()
 
     init_dists = vmap(propagate, in_axes=(None, 0, None, None))(p0, init_rates, 1, None)
