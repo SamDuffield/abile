@@ -20,21 +20,6 @@ models.discrete.psi_computation(m)
 s = 1.
 discrete_s = m / 5
 
-# elo_k = 0.039069396
-# elo_kappa = 0.5963623
-
-# ts_init_var = 0.34590456
-# ts_tau = 0.00721472
-# ts_epsilon = 0.3296613
-
-# lsmc_init_var =  0.19661216
-# lsmc_tau = 0.0064961524
-# lsmc_epsilon = 0.31839916
-
-# discrete_init_var = 1998.5474
-# discrete_tau = 0.58106744
-# discrete_epsilon = 31.9206
-
 elo_k = 0.05
 elo_kappa = 0.5
 
@@ -223,7 +208,7 @@ for i in range(len(ts_axes)):
         norm.pdf(ts_linsp, ts_filter_single_plot[i, 0], jnp.sqrt(ts_filter_single_plot[i, 1])),
         ts_linsp,
         alpha=0.5, c=filter_colour, lw=lw)
-ts_axes[0].set_ylabel('TrueSkill', fontsize=yfontsize)
+ts_axes[0].set_ylabel('TrueSkill2', fontsize=yfontsize)
 ts_fig.tight_layout()
 ts_fig.savefig('results/football_trueskill_single.pdf', dpi=300)
 
