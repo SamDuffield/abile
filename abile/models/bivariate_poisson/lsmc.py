@@ -3,6 +3,7 @@ from functools import partial
 
 from jax import numpy as jnp, random, vmap, jit
 from jax.scipy.stats import poisson
+from jax.scipy.special import gammaln, factorial
 
 # from jax.scipy.optimize import minimize
 from scipy.optimize import minimize
@@ -10,81 +11,65 @@ from scipy.optimize import minimize
 from abile import get_random_filter
 from abile import times_and_skills_by_player_to_by_match
 from abile.models.lsmc import get_sum_t1_diffs_single
-from abile.models.sigmoids import logistic
 
 # skills.shape = (number of players, number of particles, 2)
 # match_result = 2d non-negative integer array for [home goals, away goals]
 # static_propagate_params = (tau,)
 #       tau = rate of dynamics
-# static_update_params = (gamma, rho)
-#       gamma = home advatange scaling
-#       rho = home/away goals correlation parameter
+# static_update_params = (alpha_h, alpha_a, rho)
+#       alpha_h = home goals shift
+#       alpha_a = away goals shift
+#       beta = home/away goals correlation parameter
 
 init_time: Union[float, jnp.ndarray] = 0.0
 n_particles: int = None
 max_goals = 9
 
 
-def tau(home_goals, away_goals, home_goals_strength, away_goals_strength, rho):
-    out = 1.0
-    out = jnp.where(
-        (home_goals == 0) * (away_goals == 0),
-        1 - home_goals_strength * away_goals_strength * rho,
-        out,
+def binom(x, y):
+    return jnp.exp(gammaln(x + 1) - gammaln(y + 1) - gammaln(x - y + 1))
+
+
+def single_correlation_factor(k, home_goals, away_goals, lambda_1, lambda_2, lambda_3):
+    val = (
+        binom(home_goals, k)
+        * binom(away_goals, k)
+        * factorial(k)
+        * (lambda_3 / (lambda_1 * lambda_2)) ** k
     )
-    out = jnp.where(
-        (home_goals == 0) * (away_goals == 1),
-        1 + home_goals_strength * rho,
-        out,
-    )
-    out = jnp.where(
-        (home_goals == 1) * (away_goals == 0),
-        1 + away_goals_strength * rho,
-        out,
-    )
-    out = jnp.where(
-        (home_goals == 1) * (away_goals == 1),
-        1 - rho,
-        out,
-    )
-    return out
+    return jnp.where((k > home_goals) | (k > away_goals), 0.0, val)
 
 
 def log_likelihood_single(
-    home_goals, away_goals, home_goals_strength, away_goals_strength, rho
+    home_goals, away_goals, lambda_1, lambda_2, lambda_3
 ) -> float:
-    min_possible_rho = jnp.maximum(-1 / home_goals_strength, -1 / away_goals_strength)
-    max_possible_rho = jnp.minimum(1 / (home_goals_strength * away_goals_strength), 1)
-    transformed_rho = min_possible_rho + (
-        max_possible_rho - min_possible_rho
-    ) * logistic(rho)
-
-    # transformed_rho = rho
-
+    correlation_coeff = vmap(
+        single_correlation_factor, in_axes=(0, None, None, None, None, None)
+    )(
+        jnp.arange(max_goals + 1),
+        home_goals,
+        away_goals,
+        lambda_1,
+        lambda_2,
+        lambda_3,
+    ).sum()
     return jnp.squeeze(
-        jnp.log(
-            tau(
-                home_goals,
-                away_goals,
-                home_goals_strength,
-                away_goals_strength,
-                transformed_rho,
-            )
-        )
-        + poisson.logpmf(home_goals, home_goals_strength)
-        + poisson.logpmf(away_goals, away_goals_strength)
+        -lambda_3
+        + jnp.log(correlation_coeff)
+        + poisson.logpmf(home_goals, lambda_1)
+        + poisson.logpmf(away_goals, lambda_2)
     )
 
 
 @jit
-def likelihood_matrix(home_goals_strength, away_goals_strength, rho) -> jnp.ndarray:
+def likelihood_matrix(lambda_1, lambda_2, lambda_3) -> jnp.ndarray:
     possible_home_goals = jnp.arange(max_goals + 1)
     possible_away_goals = jnp.arange(max_goals + 1)
     lls = partial(
         log_likelihood_single,
-        home_goals_strength=home_goals_strength,
-        away_goals_strength=away_goals_strength,
-        rho=rho,
+        lambda_1=lambda_1,
+        lambda_2=lambda_2,
+        lambda_3=lambda_3,
     )
 
     log_lik_mat = vmap(vmap(lls, in_axes=(None, 0)), in_axes=(0, None))(
@@ -117,14 +102,13 @@ def propagate(
 
 
 def predict(
-    skill_home: jnp.ndarray, skill_away: jnp.ndarray, alphas_and_rho: jnp.ndarray
+    skill_home: jnp.ndarray, skill_away: jnp.ndarray, alphas_and_beta: jnp.ndarray
 ) -> jnp.ndarray:
-    alpha_h, alpha_a, rho = alphas_and_rho
-    home_goals_strength_all = jnp.exp(alpha_h + skill_home[..., 0] - skill_away[..., 1])
-    away_goals_strength_all = jnp.exp(alpha_a + skill_away[..., 0] - skill_home[..., 1])
-    return vmap(likelihood_matrix, in_axes=(0, 0, None))(
-        home_goals_strength_all, away_goals_strength_all, rho
-    )
+    alpha_h, alpha_a, beta = alphas_and_beta
+    lambda_1s = jnp.exp(alpha_h + skill_home[..., 0] - skill_away[..., 1])
+    lambda_2s = jnp.exp(alpha_a + skill_away[..., 0] - skill_home[..., 1])
+    lambda_3 = jnp.exp(beta)
+    return vmap(likelihood_matrix, in_axes=(0, 0, None))(lambda_1s, lambda_2s, lambda_3)
 
 
 def prob_mat_to_prob_results(prob_mat):
@@ -139,10 +123,10 @@ def update(
     skill_p1: jnp.ndarray,
     skill_p2: jnp.ndarray,
     match_result: int,
-    alphas_and_rho: jnp.ndarray,
+    alphas_and_beta: jnp.ndarray,
     random_key: jnp.ndarray,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    predict_prob_mats = predict(skill_p1, skill_p2, alphas_and_rho)
+    predict_prob_mats = predict(skill_p1, skill_p2, alphas_and_beta)
     expected_predict_prob_mat = predict_prob_mats.mean(0)
     expected_results = prob_mat_to_prob_results(expected_predict_prob_mat)
 
@@ -212,6 +196,11 @@ def maximiser(
     maxed_att_var = ((init_smoothing_skills[:, :, 0] - maxed_att_mean) ** 2).mean()
     maxed_def_var = ((init_smoothing_skills[:, :, 1] - maxed_def_mean) ** 2).mean()
 
+    # maxed_att_mean = 0.0
+    # maxed_def_mean = 0.0
+    # maxed_att_var = ((init_smoothing_skills - maxed_att_mean) ** 2).mean()
+    # maxed_def_var = maxed_att_var
+
     maxed_initial_params = jnp.array(
         [[maxed_att_mean, maxed_def_mean], [maxed_att_var, maxed_def_var]]
     )
@@ -248,21 +237,19 @@ def maximiser(
     )
 
     @jit
-    def negative_expected_log_obs_dens(alphas_and_rho: jnp.ndarray) -> float:
+    def negative_expected_log_obs_dens(alphas_and_beta: jnp.ndarray) -> float:
         def p_y_given_x(
             skill_p1: jnp.ndarray, skill_p2: jnp.ndarray, match_result: jnp.ndarray
         ) -> float:
-            all_probs = predict(skill_p1, skill_p2, alphas_and_rho)[
+            all_probs = predict(skill_p1, skill_p2, alphas_and_beta)[
                 :, match_result[0], match_result[1]
             ]
-            all_probs = jnp.where(all_probs < 1e-20, 1e-20, all_probs)
+            # all_probs = jnp.where(all_probs < 1e-20, 1e-20, all_probs)
             return jnp.log(all_probs).mean()
 
         return -(
             (vmap(p_y_given_x)(match_skills_p1, match_skills_p2, match_results)).mean()
         )
-
-    ########
 
     optim_res = minimize(
         negative_expected_log_obs_dens,
@@ -270,7 +257,7 @@ def maximiser(
         method="cobyla",
     )
 
-    assert optim_res.success, "gamma and rho optimisation failed"
-    maxed_alphas_and_rho = jnp.array(optim_res.x)
+    assert optim_res.success, "gamma and beta optimisation failed"
+    maxed_alphas_and_beta = jnp.array(optim_res.x)
 
-    return maxed_initial_params, maxed_tau, maxed_alphas_and_rho
+    return maxed_initial_params, maxed_tau, maxed_alphas_and_beta

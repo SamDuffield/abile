@@ -42,16 +42,69 @@ init_player_times = jnp.zeros(n_players)
 n_particles = 1000
 models.dixon_coles.lsmc.n_particles = n_particles
 
-# n_em_steps = 100
-n_em_steps = 3
+n_em_steps = 100
+# n_em_steps = 3
 
 init_init_mean = jnp.zeros(2)
-# init_init_var = 0.1 * jnp.ones(2)
-init_init_var = 0.001 * jnp.ones(2)
-init_tau = 0.001
+init_init_var = 0.1 * jnp.ones(2)
+init_tau = 0.01
 init_alpha_h = jnp.log(train_match_results[:, 0].mean())
 init_alpha_a = jnp.log(train_match_results[:, 1].mean())
-init_rho = 0.0
+init_rho = -0.13
+
+
+# def plot_skills(skills):
+#     xlim = (-1.5, 1.5)
+#     bins = 40
+#     fig, axes = plt.subplots(2, 2, figsize=(10, 5))
+#     axes[0, 0].hist(
+#         skills[0, :, 0],
+#         range=xlim,
+#         bins=bins,
+#         label="Home Attack",
+#         color="red",
+#         density=True,
+#     )
+#     axes[1, 0].hist(
+#         skills[1, :, 0],
+#         range=xlim,
+#         bins=bins,
+#         label="Away Attack",
+#         color="purple",
+#         density=True,
+#     )
+#     axes[0, 1].hist(
+#         skills[0, :, 1],
+#         range=xlim,
+#         bins=bins,
+#         label="Home Defence",
+#         color="orange",
+#         density=True,
+#     )
+#     axes[1, 1].hist(
+#         skills[1, :, 1],
+#         range=xlim,
+#         bins=bins,
+#         label="Away Defence",
+#         color="blue",
+#         density=True,
+#     )
+#     fig.legend()
+
+
+# skills = models.dixon_coles.lsmc.initiator(2, [init_init_mean, init_init_var], rk)[1]
+# plot_skills(skills)
+
+# res = jnp.array([0, 3])
+# aar = jnp.array([init_alpha_h, init_alpha_a, init_rho])
+
+
+# us1, us2, ers = models.dixon_coles.lsmc.update(skills[0], skills[1], res, aar, rk)
+
+# uskills = jnp.stack([us1, us2], axis=0)
+# plot_skills(uskills)
+
+# models.dixon_coles.lsmc.update(uskills[0], uskills[1], res, aar, rk)[2]
 
 
 # ##########
