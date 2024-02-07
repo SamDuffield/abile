@@ -191,14 +191,16 @@ def maximiser(
         [p[0][0] for p in smoother_skills_and_extras_by_player_clean]
     )
 
-    # maxed_att_mean = 0.0
-    # maxed_def_mean = 0.0
+    maxed_att_mean = 0.0
+    maxed_def_mean = 0.0
+
     # maxed_att_var = ((init_smoothing_skills[:, :, 0] - maxed_att_mean) ** 2).mean()
     # maxed_def_var = ((init_smoothing_skills[:, :, 1] - maxed_def_mean) ** 2).mean()
 
-    maxed_att_mean = 0.0
-    maxed_def_mean = 0.0
-    maxed_att_var = ((init_smoothing_skills - maxed_att_mean) ** 2).mean()
+    # maxed_att_var = ((init_smoothing_skills - maxed_att_mean) ** 2).mean()
+    # maxed_def_var = maxed_att_var
+
+    maxed_att_var = jnp.cov(init_smoothing_skills.flatten())
     maxed_def_var = maxed_att_var
 
     maxed_initial_params = jnp.array(

@@ -42,14 +42,16 @@ n_particles = 1000
 models.bivariate_poisson.lsmc.n_particles = n_particles
 
 
-n_em_steps = 100
+n_em_steps = 50
+# n_em_steps = 500
+
 
 init_init_mean = jnp.zeros(2)
-init_init_var = 0.1 * jnp.ones(2)
+init_init_var = jnp.ones(2)
 init_tau = 0.01
 init_alpha_h = jnp.log(train_match_results[:, 0].mean())
 init_alpha_a = jnp.log(train_match_results[:, 1].mean())
-init_beta = 0.0
+init_beta = -3.0
 
 
 bp_lsmc_em_out = abile.expectation_maximisation(
