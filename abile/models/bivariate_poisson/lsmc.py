@@ -191,15 +191,15 @@ def maximiser(
         [p[0][0] for p in smoother_skills_and_extras_by_player_clean]
     )
 
-    maxed_att_mean = 0.0
-    maxed_def_mean = 0.0
-    maxed_att_var = ((init_smoothing_skills[:, :, 0] - maxed_att_mean) ** 2).mean()
-    maxed_def_var = ((init_smoothing_skills[:, :, 1] - maxed_def_mean) ** 2).mean()
-
     # maxed_att_mean = 0.0
     # maxed_def_mean = 0.0
-    # maxed_att_var = ((init_smoothing_skills - maxed_att_mean) ** 2).mean()
-    # maxed_def_var = maxed_att_var
+    # maxed_att_var = ((init_smoothing_skills[:, :, 0] - maxed_att_mean) ** 2).mean()
+    # maxed_def_var = ((init_smoothing_skills[:, :, 1] - maxed_def_mean) ** 2).mean()
+
+    maxed_att_mean = 0.0
+    maxed_def_mean = 0.0
+    maxed_att_var = ((init_smoothing_skills - maxed_att_mean) ** 2).mean()
+    maxed_def_var = maxed_att_var
 
     maxed_initial_params = jnp.array(
         [[maxed_att_mean, maxed_def_mean], [maxed_att_var, maxed_def_var]]
@@ -257,7 +257,7 @@ def maximiser(
         method="cobyla",
     )
 
-    assert optim_res.success, "gamma and beta optimisation failed"
+    assert optim_res.success, "alpha and beta optimisation failed"
     maxed_alphas_and_beta = jnp.array(optim_res.x)
 
     return maxed_initial_params, maxed_tau, maxed_alphas_and_beta
