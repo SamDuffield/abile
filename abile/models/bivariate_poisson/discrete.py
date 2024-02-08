@@ -215,3 +215,44 @@ def prob_mat_to_prob_results(prob_mat):
     prob_home = jnp.tril(prob_mat, -1).sum()
     prob_away = jnp.triu(prob_mat, 1).sum()
     return jnp.array([prob_draw, prob_home, prob_away])
+
+def update(
+    skill_p1: jnp.ndarray,
+    skill_p2: jnp.ndarray,
+    match_result: int,
+    alphas_and_beta_and_s: jnp.ndarray,
+    _: Any) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    
+    _, _, _, s = alphas_and_beta_and_s
+    
+    predict_prob_mats = predict( skill_p1, skill_p2, alphas_and_beta_and_s)
+    expected_results = prob_mat_to_prob_results(predict_prob_mats)
+
+    skill_AH_DH = skill_p1[:,0:1]*jnp.transpose(skill_p1[:,1:])
+    skill_AA_DA = skill_p2[:,0:1]*jnp.transpose(skill_p2[:,1:])
+
+    skill_AH_DH_AA_DA = jnp.einsum("ad, ws -> adws", skill_AH_DH, skill_AA_DA)
+
+    skills_matrix = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1)) * jnp.ones((1, M))
+    skills_diff = (skills_matrix - jnp.transpose(skills_matrix)) / s
+
+    lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3 = lambdas_rate_computation(alphas_and_beta_and_s, skills_diff)
+
+    emission_AH_DH_AA_DA_H_A = emission_matrix(lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3)
+    emission_AH_DH_AA_DA_xy  = emission_AH_DH_AA_DA_H_A[..., match_result[0], match_result[1]]
+
+    numerator = skill_AH_DH_AA_DA*emission_AH_DH_AA_DA_xy
+
+    joint = numerator/predict_prob_mats[match_result[0], match_result[1]]
+
+    update_skill_p1_attach  = jnp.sum(joint, axis = (1, 2, 3))
+    update_skill_p1_defense = jnp.sum(joint, axis = (0, 2, 3))
+    update_skill_p1 = jnp.stack((update_skill_p1_attach, update_skill_p1_defense), axis = -1)
+    
+    update_skill_p2_attach  = jnp.sum(joint, axis = (0, 1, 3))
+    update_skill_p2_defense = jnp.sum(joint, axis = (0, 1, 2))
+    update_skill_p2 = jnp.stack((update_skill_p2_attach, update_skill_p2_defense), axis = -1)
+
+    return update_skill_p1, update_skill_p2, expected_results
+
+filter = get_basic_filter(propagate, update)
