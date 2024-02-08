@@ -256,3 +256,122 @@ def update(
     return update_skill_p1, update_skill_p2, expected_results
 
 filter = get_basic_filter(propagate, update)
+
+def rev_K_t_Msquare(norm_pi_t_T: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray:
+    time_lamb = (1 - lambdas)
+    time_lamb = time_lamb * delta_t * tau
+
+    rev_attack_pi  = jnp.einsum("kj,j->k", psi, jnp.exp(-time_lamb[:,0])*jnp.einsum("jk,j->k", psi, norm_pi_t_T[:,0]))
+    rev_defence_pi = jnp.einsum("kj,j->k", psi, jnp.exp(-time_lamb[:,0])*jnp.einsum("jk,j->k", psi, norm_pi_t_T[:,1]))
+
+    return jnp.stack((rev_attack_pi, rev_defence_pi), axis = -1)
+
+
+def grad_K_t_Msquare(norm_pi_t_T: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray:
+    time_lamb = (1 - lambdas)
+    time_lamb = time_lamb * delta_t * tau
+
+    Lambda_expLambda = -(delta_t * (1 - lambdas) * jnp.exp(-time_lamb))
+
+    grad_attack  = jnp.einsum("kj,j->k", psi, Lambda_expLambda[:,0]*jnp.einsum("jk,j->k", psi, norm_pi_t_T[:,0]))
+    grad_defense = jnp.einsum("kj,j->k", psi, Lambda_expLambda[:,0]*jnp.einsum("jk,j->k", psi, norm_pi_t_T[:,1]))
+
+    return jnp.stack((grad_attack, grad_defense), axis = -1)
+
+
+def smoother(filter_skill_t: jnp.ndarray,
+             time: float,
+             smooth_skill_tplus1: jnp.ndarray,
+             time_plus1: float,
+             tau: float,
+             _: Any) -> Tuple[jnp.ndarray, float]:
+    delta_tp1_update = (time_plus1 - time)
+
+    pred_t = propagate(filter_skill_t, delta_tp1_update, tau, None)
+
+    norm_pi_t_T = smooth_skill_tplus1/pred_t
+    norm_pi_t_T = jnp.where(smooth_skill_tplus1 <= min_prob, min_prob, norm_pi_t_T)
+    norm_pi_t_T = jnp.where(pred_t <= min_prob, min_prob, norm_pi_t_T)
+
+    pi_t_T_update = rev_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau)*filter_skill_t
+    grad = jnp.sum(grad_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau)*filter_skill_t)
+
+    pi_t_T_update = jnp.where(pi_t_T_update < min_prob, min_prob, pi_t_T_update)
+    pi_t_T_update /= pi_t_T_update.sum()
+
+    return pi_t_T_update, grad
+
+def maximiser(times_by_player: Sequence,
+              smoother_skills_and_extras_by_player: Sequence,
+              match_player_indices_seq: jnp.ndarray,
+              match_results: jnp.ndarray,
+              initial_params: jnp.ndarray,
+              propagate_params: jnp.ndarray,
+              update_params: jnp.ndarray,
+              i: int,
+              random_key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    # no_draw_bool = (update_params[1] == 0.) and (0 not in match_results)
+
+    n_players = len(smoother_skills_and_extras_by_player)
+
+    smoothing_list = [smoother_skills_and_extras_by_player[i][0] for i in range(n_players)]
+    grad_smoothing_list = [smoother_skills_and_extras_by_player[i][1] for i in range(n_players)]
+
+    initial_smoothing_dists = jnp.array([smoothing_list[i][0] for i in range(n_players)])
+
+    def negative_expected_log_initial(log_rate):
+        rate = jnp.exp(log_rate)
+        _, initial_distribution_skills_player = initiator(n_players, rate, None)
+        return -jnp.sum(jnp.log(initial_distribution_skills_player)*initial_smoothing_dists)
+
+    optim_res = minimize(negative_expected_log_initial, jnp.log(initial_params), method='cobyla')
+    assert optim_res.success, 'init rate optimisation failed'
+    maxed_initial_params = jnp.exp(optim_res.x[0])
+
+    tau_grad = jnp.sum(jnp.array([jnp.sum(grad_smoothing_list[player_num]) for player_num in range(len(grad_smoothing_list))]))
+
+    maxed_tau = jnp.exp(jnp.log(propagate_params) + grad_step_size * tau_grad * propagate_params)   # gradient ascent in log space
+
+    # if no_draw_bool:
+    #     maxed_s_and_epsilon = update_params
+    # else:
+    smoother_skills_by_player = [ss for ss, _ in smoother_skills_and_extras_by_player]
+
+    match_times, match_skills_p1, match_skills_p2 = times_and_skills_by_player_to_by_match(times_by_player,
+                                                                                            smoother_skills_by_player,
+                                                                                            match_player_indices_seq)
+
+    alpha_h, alpha_a, beta, s =  update_params
+
+    def negative_expected_log_obs_dens(to_update_params):
+
+        curr_update_params =  [jnp.exp(to_update_params[0])-1, jnp.exp(to_update_params[1])-1, jnp.exp(to_update_params[2])-1, s]
+
+        skills_matrix = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1)) * jnp.ones((1, M))
+        skills_diff = (skills_matrix - jnp.transpose(skills_matrix)) / s
+
+        lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3 = lambdas_rate_computation(curr_update_params, skills_diff)
+        
+        emission_mat = emission_matrix(lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3)
+
+        value_negative_expected_log_update = 0
+        for t in range(len(match_results)):    
+            skill_AH_DH = match_skills_p1[t,:,0:1]*jnp.transpose(match_skills_p1[t,:,1:])
+            skill_AA_DA = match_skills_p2[t,:,0:1]*jnp.transpose(match_skills_p2[t,:,1:])
+
+            skill_AH_DH_AA_DA = jnp.einsum("ad, ws -> adws", skill_AH_DH, skill_AA_DA)
+            current_emission = emission_mat[..., match_results[t][0], match_results[t][1]]
+
+            value_negative_expected_log_update -= jnp.sum(jnp.log(1e-20 + current_emission
+                                                                    + jnp.array(skill_AH_DH_AA_DA == 0, jnp.float32))
+                                                            * skill_AH_DH_AA_DA)
+
+        return value_negative_expected_log_update
+
+    optim_res = minimize(negative_expected_log_obs_dens, jnp.log(1+jnp.array(update_params[:-1])), method='cobyla')
+
+    assert optim_res.success, 'epsilon optimisation failed'
+    maxed_epsilon = jnp.exp(optim_res.x[0])
+    maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
+
+    return maxed_initial_params, maxed_tau, maxed_s_and_epsilon
