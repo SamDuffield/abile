@@ -1,6 +1,7 @@
 from typing import Tuple, Any, Union, Sequence, Callable
 from functools import partial
 
+import jax
 from jax import numpy as jnp, random, jit, vmap
 from jax.scipy.stats import poisson
 from jax.scipy.special import gammaln#, factorial
@@ -354,24 +355,28 @@ def maximiser(times_by_player: Sequence,
         
         emission_mat = emission_matrix(lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3)
 
-        value_negative_expected_log_update = 0
-        for t in range(len(match_results)):    
-            skill_AH_DH = match_skills_p1[t,:,0:1]*jnp.transpose(match_skills_p1[t,:,1:])
-            skill_AA_DA = match_skills_p2[t,:,0:1]*jnp.transpose(match_skills_p2[t,:,1:])
+        skill_AH_DH = jnp.einsum("ta,td->tad", match_skills_p1[...,0], match_skills_p1[...,1])
+        skill_AA_DA = jnp.einsum("ta,td->tad", match_skills_p2[...,0], match_skills_p2[...,1])
 
-            skill_AH_DH_AA_DA = jnp.einsum("ad, ws -> adws", skill_AH_DH, skill_AA_DA)
-            current_emission = emission_mat[..., match_results[t][0], match_results[t][1]]
+        skill_AH_DH_AA_DA = jnp.einsum("tad, tws -> tadws", skill_AH_DH, skill_AA_DA)
 
-            value_negative_expected_log_update -= jnp.sum(jnp.log(1e-20 + current_emission
-                                                                    + jnp.array(skill_AH_DH_AA_DA == 0, jnp.float32))
-                                                            * skill_AH_DH_AA_DA)
+        index_1 = match_results[:, 0]
+        index_2 = match_results[:, 1]
 
-        return value_negative_expected_log_update
+        dim_emission = emission_mat.shape[-1]
+
+        index_1_one_hot = jax.nn.one_hot(index_1, dim_emission)
+        index_2_one_hot = jax.nn.one_hot(index_2, dim_emission)
+
+        emission_max_H  = jnp.einsum("adwpxy,tx->tadwpy", emission_mat, index_1_one_hot)
+        emission_max_HA = jnp.einsum("tadwpy,ty->tadwp", emission_max_H, index_2_one_hot)
+
+        return -jnp.sum(jnp.log(jnp.where(emission_max_HA==0, 1e-30, emission_max_HA))*skill_AH_DH_AA_DA)
 
     optim_res = minimize(negative_expected_log_obs_dens, jnp.log(1+jnp.array(update_params[:-1])), method='cobyla')
 
-    assert optim_res.success, 'epsilon optimisation failed'
-    maxed_epsilon = jnp.exp(optim_res.x[0])
-    maxed_s_and_epsilon = update_params.at[1].set(maxed_epsilon)
+    assert optim_res.success, 'update parameters optimisation failed'
+    to_update_params = jnp.exp(optim_res.x)-1
+    maxed_update_params = jnp.concatenate((to_update_params, jnp.expand_dims(s, axis = 0)), axis = 0)
 
-    return maxed_initial_params, maxed_tau, maxed_s_and_epsilon
+    return maxed_initial_params, maxed_tau, maxed_update_params

@@ -125,6 +125,7 @@ def expectation_maximisation(
     verbose: bool = True,
     match_outcomes: Any = None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    
     if random_key is None:
         random_key = random.PRNGKey(0)
     if n_players is None:
