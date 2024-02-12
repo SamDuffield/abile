@@ -21,7 +21,7 @@ from abile import times_and_skills_by_player_to_by_match
 
 init_time: float = 0.
 M: int
-grad_step_size: float = 1e-3
+grad_step_size: float = 1e-5
 min_prob: float = 1e-10
 
 psi: jnp.ndarray
@@ -345,7 +345,7 @@ def maximiser(times_by_player: Sequence,
     alpha_h, alpha_a, beta, s =  update_params
 
     def negative_expected_log_obs_dens(to_update_params):
-
+    
         curr_update_params =  [jnp.exp(to_update_params[0])-1, jnp.exp(to_update_params[1])-1, jnp.exp(to_update_params[2])-1, s]
 
         skills_matrix = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1)) * jnp.ones((1, M))
@@ -355,23 +355,29 @@ def maximiser(times_by_player: Sequence,
         
         emission_mat = emission_matrix(lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3)
 
-        skill_AH_DH = jnp.einsum("ta,td->tad", match_skills_p1[...,0], match_skills_p1[...,1])
-        skill_AA_DA = jnp.einsum("ta,td->tad", match_skills_p2[...,0], match_skills_p2[...,1])
+        def log_like_computation(match_skills_p1_t, match_skills_p2_t, match_results_t):
 
-        skill_AH_DH_AA_DA = jnp.einsum("tad, tws -> tadws", skill_AH_DH, skill_AA_DA)
+            skill_AH_DH = jnp.einsum("a,d->ad", match_skills_p1_t[...,0], match_skills_p1_t[...,1])
+            skill_AA_DA = jnp.einsum("a,d->ad", match_skills_p2_t[...,0], match_skills_p2_t[...,1])
 
-        index_1 = match_results[:, 0]
-        index_2 = match_results[:, 1]
+            skill_AH_DH_AA_DA = jnp.einsum("ad, ws -> adws", skill_AH_DH, skill_AA_DA)
 
-        dim_emission = emission_mat.shape[-1]
+            index_1 = match_results_t[0]
+            index_2 = match_results_t[1]
 
-        index_1_one_hot = jax.nn.one_hot(index_1, dim_emission)
-        index_2_one_hot = jax.nn.one_hot(index_2, dim_emission)
+            dim_emission = emission_mat.shape[-1]
 
-        emission_max_H  = jnp.einsum("adwpxy,tx->tadwpy", emission_mat, index_1_one_hot)
-        emission_max_HA = jnp.einsum("tadwpy,ty->tadwp", emission_max_H, index_2_one_hot)
+            index_1_one_hot = jax.nn.one_hot(index_1, dim_emission)
+            index_2_one_hot = jax.nn.one_hot(index_2, dim_emission)
 
-        return -jnp.sum(jnp.log(jnp.where(emission_max_HA==0, 1e-30, emission_max_HA))*skill_AH_DH_AA_DA)
+            emission_max_H  = jnp.einsum("adwpxy,x->adwpy", emission_mat, index_1_one_hot)
+            emission_max_HA = jnp.einsum("adwpy,y->adwp", emission_max_H, index_2_one_hot)
+
+            return -jnp.sum(jnp.log(jnp.where(emission_max_HA==0, 1e-30, emission_max_HA))*skill_AH_DH_AA_DA)
+
+        log_like = vmap(log_like_computation, in_axes=(0))(match_skills_p1, match_skills_p2, match_results)
+
+        return jnp.sum(log_like)
 
     optim_res = minimize(negative_expected_log_obs_dens, jnp.log(1+jnp.array(update_params[:-1])), method='cobyla')
 

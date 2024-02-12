@@ -67,16 +67,16 @@ bp_discrete_em_out = abile.expectation_maximisation(
 )
 
 
-with open(results_dir + "football_bp_lsmc_em.pickle", "wb") as f:
-    pickle.dump(bp_lsmc_em_out, f)
+with open(results_dir + "football_bp_discrete_em.pickle", "wb") as f:
+    pickle.dump(bp_discrete_em_out, f)
 
 
-with open(results_dir + "football_bp_lsmc_em.pickle", "rb") as f:
-    bp_lsmc_em_out = pickle.load(f)
+with open(results_dir + "football_bp_discrete_em.pickle", "rb") as f:
+    bp_discrete_em_out = pickle.load(f)
 
 
 conv_fig, conv_ax = plt.subplots()
-conv_ax.plot(bp_lsmc_em_out[3], label=f"LSMC, N={n_particles}")
+conv_ax.plot(bp_discrete_em_out[3], label=f"Discrete, M={M}")
 conv_ax.set_xlabel("EM iteration")
 conv_ax.set_ylabel("Log likelihood (Bivariate Poisson)")
 conv_ax.set_title("Football EPL: 18/19 - 20/21")
@@ -84,11 +84,9 @@ conv_ax.legend()
 conv_fig.tight_layout()
 conv_fig.savefig(results_dir + "train_bp_football_lml.png", dpi=300)
 
-
 # Plot initial variances
 ivs_fig, ivs_ax = plt.subplots()
-ivs_ax.plot(bp_lsmc_em_out[0][:, 1, 0], label="Home")
-ivs_ax.plot(bp_lsmc_em_out[0][:, 1, 1], label="Away")
+ivs_ax.plot(bp_discrete_em_out[0][:,0])
 ivs_ax.set_xlabel("EM iteration (Bivariate Poisson)")
 ivs_ax.set_ylabel("Initial variance")
 ivs_ax.set_title("Football EPL: 18/19 - 20/21")
@@ -99,7 +97,7 @@ ivs_fig.savefig(results_dir + "train_bp_football_ivs.png", dpi=300)
 
 # Plot tau
 tau_fig, tau_ax = plt.subplots()
-tau_ax.plot(bp_lsmc_em_out[1], label="Tau")
+tau_ax.plot(bp_discrete_em_out[1], label="Tau")
 tau_ax.set_xlabel("EM iteration (Bivariate Poisson)")
 tau_ax.set_ylabel("Tau")
 tau_ax.set_title("Football EPL: 18/19 - 20/21")
@@ -110,9 +108,9 @@ tau_fig.savefig(results_dir + "train_bp_football_tau.png", dpi=300)
 
 # Plot alphas and beta
 aab_fig, aab_ax = plt.subplots()
-aab_ax.plot(bp_lsmc_em_out[2][:, 0], label="Home")
-aab_ax.plot(bp_lsmc_em_out[2][:, 1], label="Away")
-aab_ax.plot(bp_lsmc_em_out[2][:, 2], label="Correlation")
+aab_ax.plot(bp_discrete_em_out[2][:, 0], label="Home")
+aab_ax.plot(bp_discrete_em_out[2][:, 1], label="Away")
+aab_ax.plot(bp_discrete_em_out[2][:, 2], label="Correlation")
 aab_ax.set_xlabel("EM iteration (Bivariate Poisson)")
 aab_ax.set_ylabel("Alpha/Beta")
 aab_ax.set_title("Football EPL: 18/19 - 20/21")
