@@ -365,13 +365,7 @@ def maximiser(times_by_player: Sequence,
             index_1 = match_results_t[0]
             index_2 = match_results_t[1]
 
-            dim_emission = emission_mat.shape[-1]
-
-            index_1_one_hot = jax.nn.one_hot(index_1, dim_emission)
-            index_2_one_hot = jax.nn.one_hot(index_2, dim_emission)
-
-            emission_max_H  = jnp.einsum("adwpxy,x->adwpy", emission_mat, index_1_one_hot)
-            emission_max_HA = jnp.einsum("adwpy,y->adwp", emission_max_H, index_2_one_hot)
+            emission_max_HA = emission_mat[...,index_1,index_2]
 
             return -jnp.sum(jnp.log(jnp.where(emission_max_HA==0, 1e-30, emission_max_HA))*skill_AH_DH_AA_DA)
 
