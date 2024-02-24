@@ -574,9 +574,14 @@ def smoother(
     pred_t = propagate(filter_skill_t, delta_tp1_update, tau, None)
 
     norm_pi_t_T = smooth_skill_tplus1 / pred_t
+    norm_pi_t_T = smooth_skill_tplus1 / pred_t
     norm_pi_t_T = jnp.where(smooth_skill_tplus1 <= min_prob, min_prob, norm_pi_t_T)
     norm_pi_t_T = jnp.where(pred_t <= min_prob, min_prob, norm_pi_t_T)
 
+    pi_t_T_update = rev_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau) * filter_skill_t
+    grad = jnp.sum(
+        grad_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau) * filter_skill_t
+    )
     pi_t_T_update = rev_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau) * filter_skill_t
     grad = jnp.sum(
         grad_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau) * filter_skill_t
@@ -587,6 +592,18 @@ def smoother(
 
     return pi_t_T_update, grad
 
+
+def maximiser(
+    times_by_player: Sequence,
+    smoother_skills_and_extras_by_player: Sequence,
+    match_player_indices_seq: jnp.ndarray,
+    match_results: jnp.ndarray,
+    initial_params: jnp.ndarray,
+    propagate_params: jnp.ndarray,
+    update_params: jnp.ndarray,
+    i: int,
+    random_key: jnp.ndarray,
+) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
 
 def maximiser(
     times_by_player: Sequence,
@@ -704,8 +721,23 @@ def maximiser(
         emission_mat = emission_matrix(
             lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3
         )
+        (
+            lambda_1s_AH_DH_AA_DA_H_A,
+            lambda_2s_AH_DH_AA_DA_H_A,
+            lambda_3,
+        ) = lambdas_rate_computation(curr_update_params, skills_diff)
+
+        emission_mat = emission_matrix(
+            lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3
+        )
 
         def log_like_computation(match_skills_p1_t, match_skills_p2_t, match_results_t):
+            skill_AH_DH = jnp.einsum(
+                "a,d->ad", match_skills_p1_t[..., 0], match_skills_p1_t[..., 1]
+            )
+            skill_AA_DA = jnp.einsum(
+                "a,d->ad", match_skills_p2_t[..., 0], match_skills_p2_t[..., 1]
+            )
             skill_AH_DH = jnp.einsum(
                 "a,d->ad", match_skills_p1_t[..., 0], match_skills_p1_t[..., 1]
             )
@@ -719,7 +751,12 @@ def maximiser(
             index_2 = match_results_t[1]
 
             emission_max_HA = emission_mat[..., index_1, index_2]
+            emission_max_HA = emission_mat[..., index_1, index_2]
 
+            return -jnp.sum(
+                jnp.log(jnp.where(emission_max_HA == 0, 1e-30, emission_max_HA))
+                * skill_AH_DH_AA_DA
+            )
             return -jnp.sum(
                 jnp.log(jnp.where(emission_max_HA == 0, 1e-30, emission_max_HA))
                 * skill_AH_DH_AA_DA
