@@ -1,6 +1,5 @@
 import os
 from jax import numpy as jnp, random
-import matplotlib.pyplot as plt
 import pickle
 
 import abile
