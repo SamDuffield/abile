@@ -122,7 +122,7 @@ def prob_mat_to_prob_results(prob_mat):
 def update(
     skill_p1: jnp.ndarray,
     skill_p2: jnp.ndarray,
-    match_result: int,
+    match_result: jnp.ndarray,
     alphas_and_beta: jnp.ndarray,
     random_key: jnp.ndarray,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
