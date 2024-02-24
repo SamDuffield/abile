@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pickle
 
 import abile
-from abile import models, datasets
+from abile import models
 
 from datasets.football import load_epl
 
@@ -38,18 +38,19 @@ n_players = train_match_player_indices.max() + 1
 init_player_times = jnp.zeros(n_players)
 
 
-M = 5
+M = 40
 models.bivariate_poisson.discrete.psi_computation(M)
 
 n_em_steps = 10
 
-discrete_em_init_rate = 10 ** 2.
-discrete_em_init_tau = 10 ** 2.5
+discrete_em_init_rate = 10**2.0
+discrete_em_init_tau = 10**2.5
 
 discrete_em_init_alpha_h = jnp.log(train_match_results[:, 0].mean())
 discrete_em_init_alpha_a = jnp.log(train_match_results[:, 1].mean())
 discrete_em_init_beta = 0.0
 discrete_em_init_s = M / 5
+
 
 bp_discrete_em_out = abile.expectation_maximisation(
     models.bivariate_poisson.discrete.initiator,
@@ -58,7 +59,12 @@ bp_discrete_em_out = abile.expectation_maximisation(
     models.bivariate_poisson.discrete.maximiser,
     [discrete_em_init_rate],
     discrete_em_init_tau,
-    [discrete_em_init_alpha_h, discrete_em_init_alpha_a, discrete_em_init_beta, discrete_em_init_s],
+    [
+        discrete_em_init_alpha_h,
+        discrete_em_init_alpha_a,
+        discrete_em_init_beta,
+        discrete_em_init_s,
+    ],
     train_match_times,
     train_match_player_indices,
     train_match_results,
@@ -86,7 +92,7 @@ conv_fig.savefig(results_dir + "train_bp_football_lml.png", dpi=300)
 
 # Plot initial variances
 ivs_fig, ivs_ax = plt.subplots()
-ivs_ax.plot(bp_discrete_em_out[0][:,0])
+ivs_ax.plot(bp_discrete_em_out[0][:, 0])
 ivs_ax.set_xlabel("EM iteration (Bivariate Poisson)")
 ivs_ax.set_ylabel("Initial variance")
 ivs_ax.set_title("Football EPL: 18/19 - 20/21")
