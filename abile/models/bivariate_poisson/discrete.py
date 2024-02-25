@@ -2,7 +2,7 @@ from typing import Tuple, Any, Union, Sequence, Callable
 from functools import partial
 
 import jax
-from jax import numpy as jnp, random, jit, vmap
+from jax import numpy as jnp, random, jit, vmap, grad
 from jax.scipy.stats import poisson
 from jax.scipy.special import gammaln  # , factorial
 
@@ -11,17 +11,19 @@ from scipy.optimize import minimize
 from abile import get_basic_filter
 from abile import times_and_skills_by_player_to_by_match
 
-# skills.shape = (number of players, number of discrete states)
+# skills.shape = (number of players, number of discrete states, 2) - last axis is for attack and defense
 # match_result in (0 for draw, 1 for p1 victory, 2 for p2 victory)
 # static_propagate_params = (tau,)
 #       tau = rate of dynamics
-# static_update_params = (s, epsilon)
-#       s = standard deviation of performance
-#       epsilon = draw margin
+# static_update_params = (alpha_h, alpha_a, rho)
+#       alpha_h = home goals shift
+#       alpha_a = away goals shift
+#       beta = home/away goals correlation parameter
 
 init_time: float = 0.0
 M: int
-grad_step_size: float = 1e-5
+# grad_step_size: float = 1e-5
+grad_step_size: float = 1e-2
 min_prob: float = 1e-10
 
 psi: jnp.ndarray
@@ -153,7 +155,9 @@ def lambdas_rate_computation(alphas_and_beta_and_s, skills_diff):
 def log_correlation_factor(
     lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3
 ):
-    sum_rate = lambda_3 / (lambda_1s_AH_DH_AA_DA_H_A * lambda_2s_AH_DH_AA_DA_H_A)
+    denom = lambda_1s_AH_DH_AA_DA_H_A * lambda_2s_AH_DH_AA_DA_H_A
+    denom = jnp.where(denom < 1e-30, 1e-30, denom)
+    sum_rate = lambda_3 / denom
 
     sum_rate_expanded = jnp.expand_dims(sum_rate, axis=-1)
 
@@ -172,6 +176,9 @@ def log_correlation_factor(
     )
     binomial_coefficient = jnp.prod(binomial_coefficient_xy, axis=2)
     binomial_coefficient = jnp.expand_dims(binomial_coefficient, axis=(0, 1, 2, 3))
+    binomial_coefficient = jnp.where(
+        binomial_coefficient < 1e-30, 1e-30, binomial_coefficient
+    )
 
     factorial_coefficient = factorial(k_values)
     factorial_coefficient = jnp.expand_dims(
@@ -183,6 +190,7 @@ def log_correlation_factor(
     mask = jnp.expand_dims(mask, (0, 1, 2, 3))
 
     sum_rate_masked = sum_rate_expanded * mask
+    sum_rate_masked = jnp.where(sum_rate_masked < 1e-30, 1e-30, sum_rate_masked)
 
     pow_mask = jnp.expand_dims(k_values, axis=(0, 1, 2, 3, 4, 5))
 
@@ -426,6 +434,7 @@ def maximiser(
         [smoothing_list[i][0] for i in range(n_players)]
     )
 
+    @jit
     def negative_expected_log_initial(log_rate):
         rate = jnp.exp(log_rate)
         _, initial_distribution_skills_player = initiator(n_players, rate, None)
@@ -465,15 +474,11 @@ def maximiser(
         times_by_player, smoother_skills_by_player, match_player_indices_seq
     )
 
-    alpha_h, alpha_a, beta, s = update_params
+    s = update_params[-1]
 
+    # @jit
     def negative_expected_log_obs_dens(to_update_params):
-        curr_update_params = [
-            jnp.exp(to_update_params[0]) - 1,
-            jnp.exp(to_update_params[1]) - 1,
-            jnp.exp(to_update_params[2]) - 1,
-            s,
-        ]
+        curr_update_params = jnp.append(to_update_params, s)
 
         skills_matrix = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1)) * jnp.ones(
             (1, M)
@@ -510,22 +515,28 @@ def maximiser(
                 * skill_AH_DH_AA_DA
             )
 
-        log_like = vmap(log_like_computation, in_axes=(0))(
+        log_like = vmap(log_like_computation)(
             match_skills_p1, match_skills_p2, match_results
         )
 
-        return jnp.sum(log_like)
+        return jnp.mean(log_like)
 
-    optim_res = minimize(
-        negative_expected_log_obs_dens,
-        jnp.log(1 + jnp.array(update_params[:-1])),
-        method="cobyla",
-    )
+    g = grad(negative_expected_log_obs_dens)(update_params[:-1])
 
-    assert optim_res.success, "update parameters optimisation failed"
-    to_update_params = jnp.exp(optim_res.x) - 1
-    maxed_update_params = jnp.concatenate(
-        (to_update_params, jnp.expand_dims(s, axis=0)), axis=0
-    )
+    maxed_small_update_params = update_params[:-1] + grad_step_size * g
+    maxed_update_params = update_params.at[:-1].set(maxed_small_update_params)
+
+    # optim_res = minimize(
+    #     negative_expected_log_obs_dens,
+    #     update_params[:-1],
+    #     method="cobyla",
+    #     options={"maxiter": 10},
+    # )
+
+    # assert optim_res.success, "update parameters optimisation failed"
+    # to_update_params = jnp.exp(optim_res.x) - 1
+    # maxed_update_params = jnp.concatenate(
+    #     (to_update_params, jnp.expand_dims(s, axis=0)), axis=0
+    # )
 
     return maxed_initial_params, maxed_tau, maxed_update_params
