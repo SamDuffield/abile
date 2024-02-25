@@ -5,7 +5,6 @@ import jax
 from jax import numpy as jnp, random, jit, vmap, grad
 from jax.scipy.stats import poisson
 from jax.scipy.special import gammaln  # , factorial
-from jax.scipy.special import gammaln  # , factorial
 
 from scipy.optimize import minimize
 
@@ -22,7 +21,6 @@ from abile import times_and_skills_by_player_to_by_match
 #       beta = home/away goals correlation parameter
 
 init_time: float = 0.0
-init_time: float = 0.0
 M: int
 # grad_step_size: float = 1e-5
 grad_step_size: float = 1e-2
@@ -32,7 +30,6 @@ psi: jnp.ndarray
 lambdas: jnp.ndarray
 
 max_goals = 9
-
 
 
 def psi_computation(M_new: int = None):
@@ -49,15 +46,10 @@ def psi_computation(M_new: int = None):
     psi = jnp.sqrt(2 / M) * jnp.cos(
         jnp.transpose(omegas) * (2 * (skills_index + 1) - 1)
     )
-    psi = jnp.sqrt(2 / M) * jnp.cos(
-        jnp.transpose(omegas) * (2 * (skills_index + 1) - 1)
-    )
     psi = psi.at[:, 0].set(psi[:, 0] * jnp.sqrt(1 / 2))
 
 
-
 def K_t_Msquared(pi_tm1: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray:
-    time_lamb = 1 - lambdas
     time_lamb = 1 - lambdas
     time_lamb = time_lamb * delta_t * tau
 
@@ -65,14 +57,7 @@ def K_t_Msquared(pi_tm1: jnp.ndarray, delta_t: float, tau: float) -> jnp.ndarray
         "j,kj->k", jnp.einsum("j,jk->k", pi_tm1, psi) * jnp.exp(-time_lamb[:, 0]), psi
     )
 
-    return jnp.einsum(
-        "j,kj->k", jnp.einsum("j,jk->k", pi_tm1, psi) * jnp.exp(-time_lamb[:, 0]), psi
-    )
 
-
-def single_propagate(
-    pi_tm1: jnp.ndarray, time_interval: float, tau: float, _: Any
-) -> jnp.ndarray:
 def single_propagate(
     pi_tm1: jnp.ndarray, time_interval: float, tau: float, _: Any
 ) -> jnp.ndarray:
@@ -85,13 +70,8 @@ def single_propagate(
 def initiator(
     num_players: int, init_rates: jnp.ndarray, _: Any = None
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-
-def initiator(
-    num_players: int, init_rates: jnp.ndarray, _: Any = None
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
     init_rates = init_rates * jnp.ones(num_players)
 
-    p0 = jnp.zeros(M).at[((M - 1) // 2) : ((M + 2) // 2)].set(1)
     p0 = jnp.zeros(M).at[((M - 1) // 2) : ((M + 2) // 2)].set(1)
     p0 /= p0.sum()
 
@@ -101,12 +81,6 @@ def initiator(
     init_dists_defense = vmap(single_propagate, in_axes=(None, 0, None, None))(
         p0, init_rates, 1, None
     )
-    init_dists_attack = vmap(single_propagate, in_axes=(None, 0, None, None))(
-        p0, init_rates, 1, None
-    )
-    init_dists_defense = vmap(single_propagate, in_axes=(None, 0, None, None))(
-        p0, init_rates, 1, None
-    )
 
     return jnp.zeros(num_players) + init_time, jnp.stack(
         (init_dists_attack, init_dists_defense), axis=-1
@@ -119,26 +93,12 @@ def propagate(
     prop_dist_attack = single_propagate(pi_tm1[..., 0], time_interval, tau, None)
 
     prop_dist_defense = single_propagate(pi_tm1[..., 1], time_interval, tau, None)
-    return jnp.zeros(num_players) + init_time, jnp.stack(
-        (init_dists_attack, init_dists_defense), axis=-1
-    )
-
-
-def propagate(
-    pi_tm1: jnp.ndarray, time_interval: float, tau: float, _: Any
-) -> jnp.ndarray:
-    prop_dist_attack = single_propagate(pi_tm1[..., 0], time_interval, tau, None)
-
-    prop_dist_defense = single_propagate(pi_tm1[..., 1], time_interval, tau, None)
-
-    return jnp.stack((prop_dist_attack, prop_dist_defense), axis=-1)
 
     return jnp.stack((prop_dist_attack, prop_dist_defense), axis=-1)
 
 
 def binom(x, y):
     return jnp.exp(gammaln(x + 1) - gammaln(y + 1) - gammaln(x - y + 1))
-
 
 
 def factorial(x):
@@ -176,7 +136,6 @@ def log_likelihood_single(
     )
 
 
-
 def lambdas_rate_computation(alphas_and_beta_and_s, skills_diff):
     alpha_h, alpha_a, beta, s = alphas_and_beta_and_s
 
@@ -184,13 +143,7 @@ def lambdas_rate_computation(alphas_and_beta_and_s, skills_diff):
     lambda_1s_AH_DH_AA_DA_H_A = jnp.expand_dims(
         lambda_1s_AH_DA, axis=(1, 2, 4, 5)
     ) * jnp.ones((M, M, M, M, max_goals + 1, max_goals + 1))
-    lambda_1s_AH_DH_AA_DA_H_A = jnp.expand_dims(
-        lambda_1s_AH_DA, axis=(1, 2, 4, 5)
-    ) * jnp.ones((M, M, M, M, max_goals + 1, max_goals + 1))
     lambda_2s_DH_AA = jnp.exp(alpha_a - skills_diff)
-    lambda_2s_AH_DH_AA_DA_H_A = jnp.expand_dims(
-        lambda_2s_DH_AA, axis=(0, 3, 4, 5)
-    ) * jnp.ones((M, M, M, M, max_goals + 1, max_goals + 1))
     lambda_2s_AH_DH_AA_DA_H_A = jnp.expand_dims(
         lambda_2s_DH_AA, axis=(0, 3, 4, 5)
     ) * jnp.ones((M, M, M, M, max_goals + 1, max_goals + 1))
@@ -207,7 +160,6 @@ def log_correlation_factor(
     sum_rate = lambda_3 / denom
 
     sum_rate_expanded = jnp.expand_dims(sum_rate, axis=-1)
-    sum_rate_expanded = jnp.expand_dims(sum_rate, axis=-1)
 
     goals_state = jnp.expand_dims(jnp.arange(max_goals + 1), axis=-1) * jnp.ones(
         (max_goals + 1, max_goals + 1)
@@ -215,14 +167,7 @@ def log_correlation_factor(
     goals_state_join = jnp.stack((goals_state, jnp.transpose(goals_state)), axis=-1)
     goals_state = jnp.min(goals_state_join, axis=-1)
     goals_state = jnp.expand_dims(goals_state, axis=-1)
-    goals_state = jnp.expand_dims(jnp.arange(max_goals + 1), axis=-1) * jnp.ones(
-        (max_goals + 1, max_goals + 1)
-    )
-    goals_state_join = jnp.stack((goals_state, jnp.transpose(goals_state)), axis=-1)
-    goals_state = jnp.min(goals_state_join, axis=-1)
-    goals_state = jnp.expand_dims(goals_state, axis=-1)
 
-    k_values = jnp.arange(max_goals + 1)
     k_values = jnp.arange(max_goals + 1)
 
     binomial_coefficient_xy = binom(
@@ -239,9 +184,6 @@ def log_correlation_factor(
     factorial_coefficient = jnp.expand_dims(
         factorial_coefficient, axis=(0, 1, 2, 3, 4, 5)
     )
-    factorial_coefficient = jnp.expand_dims(
-        factorial_coefficient, axis=(0, 1, 2, 3, 4, 5)
-    )
 
     mask = k_values <= goals_state
     mask = mask.astype(jnp.float32)
@@ -251,9 +193,7 @@ def log_correlation_factor(
     sum_rate_masked = jnp.where(sum_rate_masked < 1e-30, 1e-30, sum_rate_masked)
 
     pow_mask = jnp.expand_dims(k_values, axis=(0, 1, 2, 3, 4, 5))
-    pow_mask = jnp.expand_dims(k_values, axis=(0, 1, 2, 3, 4, 5))
 
-    log_sum_rate_masked_powered = pow_mask * jnp.log(sum_rate_masked)
     log_sum_rate_masked_powered = pow_mask * jnp.log(sum_rate_masked)
 
     log_to_marginalize = (
@@ -262,16 +202,7 @@ def log_correlation_factor(
         + jnp.log(binomial_coefficient)
     )
     constant = jnp.max(log_to_marginalize, axis=-1, keepdims=True)
-    log_to_marginalize = (
-        log_sum_rate_masked_powered
-        + jnp.log(factorial_coefficient)
-        + jnp.log(binomial_coefficient)
-    )
-    constant = jnp.max(log_to_marginalize, axis=-1, keepdims=True)
 
-    log_correlation_coefficient = constant[..., 0] + jnp.log(
-        jnp.sum(jnp.exp(log_to_marginalize - constant), axis=-1)
-    )
     log_correlation_coefficient = constant[..., 0] + jnp.log(
         jnp.sum(jnp.exp(log_to_marginalize - constant), axis=-1)
     )
@@ -279,12 +210,8 @@ def log_correlation_factor(
     return log_correlation_coefficient
 
 
-
 @jit
 def emission_matrix(lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3):
-    log_correlation_coefficient = log_correlation_factor(
-        lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3
-    )
     log_correlation_coefficient = log_correlation_factor(
         lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3
     )
@@ -293,17 +220,11 @@ def emission_matrix(lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda
     possible_home_goals_AH_DH_AA_DA_H_A = jnp.expand_dims(
         possible_home_goals, axis=(0, 1, 2, 3, 5)
     ) * jnp.ones((M, M, M, M, max_goals + 1, max_goals + 1))
-    possible_home_goals_AH_DH_AA_DA_H_A = jnp.expand_dims(
-        possible_home_goals, axis=(0, 1, 2, 3, 5)
-    ) * jnp.ones((M, M, M, M, max_goals + 1, max_goals + 1))
 
     possible_away_goals = jnp.arange(max_goals + 1)
     possible_away_goals_AH_DH_AA_DA_H_A = jnp.expand_dims(
         possible_away_goals, axis=(0, 1, 2, 3, 4)
     ) * jnp.ones((M, M, M, M, max_goals + 1, max_goals + 1))
-    possible_away_goals_AH_DH_AA_DA_H_A = jnp.expand_dims(
-        possible_away_goals, axis=(0, 1, 2, 3, 4)
-    ) * jnp.ones((M, M, M, M, max_goals + 1, max_goals + 1))
 
     rates_sum = lambda_1s_AH_DH_AA_DA_H_A + lambda_2s_AH_DH_AA_DA_H_A + lambda_3
     home_goals_logmarg = possible_home_goals_AH_DH_AA_DA_H_A * jnp.log(
@@ -312,20 +233,7 @@ def emission_matrix(lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda
     away_goals_logmarg = possible_away_goals_AH_DH_AA_DA_H_A * jnp.log(
         lambda_2s_AH_DH_AA_DA_H_A
     ) - gammaln(possible_away_goals_AH_DH_AA_DA_H_A + 1)
-    rates_sum = lambda_1s_AH_DH_AA_DA_H_A + lambda_2s_AH_DH_AA_DA_H_A + lambda_3
-    home_goals_logmarg = possible_home_goals_AH_DH_AA_DA_H_A * jnp.log(
-        lambda_1s_AH_DH_AA_DA_H_A
-    ) - gammaln(possible_home_goals_AH_DH_AA_DA_H_A + 1)
-    away_goals_logmarg = possible_away_goals_AH_DH_AA_DA_H_A * jnp.log(
-        lambda_2s_AH_DH_AA_DA_H_A
-    ) - gammaln(possible_away_goals_AH_DH_AA_DA_H_A + 1)
 
-    log_emission_mat = (
-        -rates_sum
-        + home_goals_logmarg
-        + away_goals_logmarg
-        + log_correlation_coefficient
-    )
     log_emission_mat = (
         -rates_sum
         + home_goals_logmarg
@@ -338,7 +246,6 @@ def emission_matrix(lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda
     return emission_mat
 
 
-
 def predict(
     skill_home: jnp.ndarray, skill_away: jnp.ndarray, alphas_and_beta_and_s: jnp.ndarray
 ) -> jnp.ndarray:
@@ -346,11 +253,8 @@ def predict(
 
     skill_AH_DH = skill_home[:, 0:1] * jnp.transpose(skill_home[:, 1:])
     skill_AA_DA = skill_away[:, 0:1] * jnp.transpose(skill_away[:, 1:])
-    skill_AH_DH = skill_home[:, 0:1] * jnp.transpose(skill_home[:, 1:])
-    skill_AA_DA = skill_away[:, 0:1] * jnp.transpose(skill_away[:, 1:])
 
     skill_AH_DH_AA_DA = jnp.einsum("ad, ws -> adws", skill_AH_DH, skill_AA_DA)
-
 
     skills_matrix = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1)) * jnp.ones((1, M))
     skills_diff = (skills_matrix - jnp.transpose(skills_matrix)) / s
@@ -360,28 +264,16 @@ def predict(
         lambda_2s_AH_DH_AA_DA_H_A,
         lambda_3,
     ) = lambdas_rate_computation(alphas_and_beta_and_s, skills_diff)
-    (
-        lambda_1s_AH_DH_AA_DA_H_A,
-        lambda_2s_AH_DH_AA_DA_H_A,
-        lambda_3,
-    ) = lambdas_rate_computation(alphas_and_beta_and_s, skills_diff)
 
     emission_AH_DH_AA_DA_H_A = emission_matrix(
         lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3
     )
-    emission_AH_DH_AA_DA_H_A = emission_matrix(
-        lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3
-    )
 
-    likelihood_matrix = jnp.einsum(
-        "adws, adwsxy->xy", skill_AH_DH_AA_DA, emission_AH_DH_AA_DA_H_A
-    )
     likelihood_matrix = jnp.einsum(
         "adws, adwsxy->xy", skill_AH_DH_AA_DA, emission_AH_DH_AA_DA_H_A
     )
 
     return likelihood_matrix
-
 
 
 def prob_mat_to_prob_results(prob_mat):
@@ -392,7 +284,6 @@ def prob_mat_to_prob_results(prob_mat):
     return jnp.array([prob_draw, prob_home, prob_away])
 
 
-
 def update(
     skill_p1: jnp.ndarray,
     skill_p2: jnp.ndarray,
@@ -400,17 +291,11 @@ def update(
     alphas_and_beta_and_s: jnp.ndarray,
     _: Any,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    _: Any,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     _, _, _, s = alphas_and_beta_and_s
-
-    predict_prob_mats = predict(skill_p1, skill_p2, alphas_and_beta_and_s)
 
     predict_prob_mats = predict(skill_p1, skill_p2, alphas_and_beta_and_s)
     expected_results = prob_mat_to_prob_results(predict_prob_mats)
 
-    skill_AH_DH = skill_p1[:, 0:1] * jnp.transpose(skill_p1[:, 1:])
-    skill_AA_DA = skill_p2[:, 0:1] * jnp.transpose(skill_p2[:, 1:])
     skill_AH_DH = skill_p1[:, 0:1] * jnp.transpose(skill_p1[:, 1:])
     skill_AA_DA = skill_p2[:, 0:1] * jnp.transpose(skill_p2[:, 1:])
 
@@ -424,18 +309,7 @@ def update(
         lambda_2s_AH_DH_AA_DA_H_A,
         lambda_3,
     ) = lambdas_rate_computation(alphas_and_beta_and_s, skills_diff)
-    (
-        lambda_1s_AH_DH_AA_DA_H_A,
-        lambda_2s_AH_DH_AA_DA_H_A,
-        lambda_3,
-    ) = lambdas_rate_computation(alphas_and_beta_and_s, skills_diff)
 
-    emission_AH_DH_AA_DA_H_A = emission_matrix(
-        lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3
-    )
-    emission_AH_DH_AA_DA_xy = emission_AH_DH_AA_DA_H_A[
-        ..., match_result[0], match_result[1]
-    ]
     emission_AH_DH_AA_DA_H_A = emission_matrix(
         lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3
     )
@@ -444,22 +318,9 @@ def update(
     ]
 
     numerator = skill_AH_DH_AA_DA * emission_AH_DH_AA_DA_xy
-    numerator = skill_AH_DH_AA_DA * emission_AH_DH_AA_DA_xy
 
     joint = numerator / predict_prob_mats[match_result[0], match_result[1]]
-    joint = numerator / predict_prob_mats[match_result[0], match_result[1]]
 
-    update_skill_p1_attach = jnp.sum(joint, axis=(1, 2, 3))
-    update_skill_p1_defense = jnp.sum(joint, axis=(0, 2, 3))
-    update_skill_p1 = jnp.stack(
-        (update_skill_p1_attach, update_skill_p1_defense), axis=-1
-    )
-
-    update_skill_p2_attach = jnp.sum(joint, axis=(0, 1, 3))
-    update_skill_p2_defense = jnp.sum(joint, axis=(0, 1, 2))
-    update_skill_p2 = jnp.stack(
-        (update_skill_p2_attach, update_skill_p2_defense), axis=-1
-    )
     update_skill_p1_attach = jnp.sum(joint, axis=(1, 2, 3))
     update_skill_p1_defense = jnp.sum(joint, axis=(0, 2, 3))
     update_skill_p1 = jnp.stack(
@@ -475,14 +336,8 @@ def update(
     return update_skill_p1, update_skill_p2, expected_results
 
 
-
 filter = get_basic_filter(propagate, update)
 
-
-def rev_K_t_Msquare(
-    norm_pi_t_T: jnp.ndarray, delta_t: float, tau: float
-) -> jnp.ndarray:
-    time_lamb = 1 - lambdas
 
 def rev_K_t_Msquare(
     norm_pi_t_T: jnp.ndarray, delta_t: float, tau: float
@@ -500,25 +355,10 @@ def rev_K_t_Msquare(
         psi,
         jnp.exp(-time_lamb[:, 0]) * jnp.einsum("jk,j->k", psi, norm_pi_t_T[:, 1]),
     )
-    rev_attack_pi = jnp.einsum(
-        "kj,j->k",
-        psi,
-        jnp.exp(-time_lamb[:, 0]) * jnp.einsum("jk,j->k", psi, norm_pi_t_T[:, 0]),
-    )
-    rev_defence_pi = jnp.einsum(
-        "kj,j->k",
-        psi,
-        jnp.exp(-time_lamb[:, 0]) * jnp.einsum("jk,j->k", psi, norm_pi_t_T[:, 1]),
-    )
 
     return jnp.stack((rev_attack_pi, rev_defence_pi), axis=-1)
-    return jnp.stack((rev_attack_pi, rev_defence_pi), axis=-1)
 
 
-def grad_K_t_Msquare(
-    norm_pi_t_T: jnp.ndarray, delta_t: float, tau: float
-) -> jnp.ndarray:
-    time_lamb = 1 - lambdas
 def grad_K_t_Msquare(
     norm_pi_t_T: jnp.ndarray, delta_t: float, tau: float
 ) -> jnp.ndarray:
@@ -537,30 +377,10 @@ def grad_K_t_Msquare(
         psi,
         Lambda_expLambda[:, 0] * jnp.einsum("jk,j->k", psi, norm_pi_t_T[:, 1]),
     )
-    grad_attack = jnp.einsum(
-        "kj,j->k",
-        psi,
-        Lambda_expLambda[:, 0] * jnp.einsum("jk,j->k", psi, norm_pi_t_T[:, 0]),
-    )
-    grad_defense = jnp.einsum(
-        "kj,j->k",
-        psi,
-        Lambda_expLambda[:, 0] * jnp.einsum("jk,j->k", psi, norm_pi_t_T[:, 1]),
-    )
 
     return jnp.stack((grad_attack, grad_defense), axis=-1)
-    return jnp.stack((grad_attack, grad_defense), axis=-1)
 
 
-def smoother(
-    filter_skill_t: jnp.ndarray,
-    time: float,
-    smooth_skill_tplus1: jnp.ndarray,
-    time_plus1: float,
-    tau: float,
-    _: Any,
-) -> Tuple[jnp.ndarray, float]:
-    delta_tp1_update = time_plus1 - time
 def smoother(
     filter_skill_t: jnp.ndarray,
     time: float,
@@ -574,14 +394,9 @@ def smoother(
     pred_t = propagate(filter_skill_t, delta_tp1_update, tau, None)
 
     norm_pi_t_T = smooth_skill_tplus1 / pred_t
-    norm_pi_t_T = smooth_skill_tplus1 / pred_t
     norm_pi_t_T = jnp.where(smooth_skill_tplus1 <= min_prob, min_prob, norm_pi_t_T)
     norm_pi_t_T = jnp.where(pred_t <= min_prob, min_prob, norm_pi_t_T)
 
-    pi_t_T_update = rev_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau) * filter_skill_t
-    grad = jnp.sum(
-        grad_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau) * filter_skill_t
-    )
     pi_t_T_update = rev_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau) * filter_skill_t
     grad = jnp.sum(
         grad_K_t_Msquare(norm_pi_t_T, delta_tp1_update, tau) * filter_skill_t
@@ -604,18 +419,6 @@ def maximiser(
     i: int,
     random_key: jnp.ndarray,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-
-def maximiser(
-    times_by_player: Sequence,
-    smoother_skills_and_extras_by_player: Sequence,
-    match_player_indices_seq: jnp.ndarray,
-    match_results: jnp.ndarray,
-    initial_params: jnp.ndarray,
-    propagate_params: jnp.ndarray,
-    update_params: jnp.ndarray,
-    i: int,
-    random_key: jnp.ndarray,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     # no_draw_bool = (update_params[1] == 0.) and (0 not in match_results)
 
     n_players = len(smoother_skills_and_extras_by_player)
@@ -626,16 +429,7 @@ def maximiser(
     grad_smoothing_list = [
         smoother_skills_and_extras_by_player[i][1] for i in range(n_players)
     ]
-    smoothing_list = [
-        smoother_skills_and_extras_by_player[i][0] for i in range(n_players)
-    ]
-    grad_smoothing_list = [
-        smoother_skills_and_extras_by_player[i][1] for i in range(n_players)
-    ]
 
-    initial_smoothing_dists = jnp.array(
-        [smoothing_list[i][0] for i in range(n_players)]
-    )
     initial_smoothing_dists = jnp.array(
         [smoothing_list[i][0] for i in range(n_players)]
     )
@@ -647,14 +441,7 @@ def maximiser(
         return -jnp.sum(
             jnp.log(initial_distribution_skills_player) * initial_smoothing_dists
         )
-        return -jnp.sum(
-            jnp.log(initial_distribution_skills_player) * initial_smoothing_dists
-        )
 
-    optim_res = minimize(
-        negative_expected_log_initial, jnp.log(initial_params), method="cobyla"
-    )
-    assert optim_res.success, "init rate optimisation failed"
     optim_res = minimize(
         negative_expected_log_initial, jnp.log(initial_params), method="cobyla"
     )
@@ -669,18 +456,7 @@ def maximiser(
             ]
         )
     )
-    tau_grad = jnp.sum(
-        jnp.array(
-            [
-                jnp.sum(grad_smoothing_list[player_num])
-                for player_num in range(len(grad_smoothing_list))
-            ]
-        )
-    )
 
-    maxed_tau = jnp.exp(
-        jnp.log(propagate_params) + grad_step_size * tau_grad * propagate_params
-    )  # gradient ascent in log space
     maxed_tau = jnp.exp(
         jnp.log(propagate_params) + grad_step_size * tau_grad * propagate_params
     )  # gradient ascent in log space
@@ -707,20 +483,8 @@ def maximiser(
         skills_matrix = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1)) * jnp.ones(
             (1, M)
         )
-        skills_matrix = jnp.reshape(jnp.linspace(0, M - 1, M), (M, 1)) * jnp.ones(
-            (1, M)
-        )
         skills_diff = (skills_matrix - jnp.transpose(skills_matrix)) / s
 
-        (
-            lambda_1s_AH_DH_AA_DA_H_A,
-            lambda_2s_AH_DH_AA_DA_H_A,
-            lambda_3,
-        ) = lambdas_rate_computation(curr_update_params, skills_diff)
-
-        emission_mat = emission_matrix(
-            lambda_1s_AH_DH_AA_DA_H_A, lambda_2s_AH_DH_AA_DA_H_A, lambda_3
-        )
         (
             lambda_1s_AH_DH_AA_DA_H_A,
             lambda_2s_AH_DH_AA_DA_H_A,
@@ -738,12 +502,6 @@ def maximiser(
             skill_AA_DA = jnp.einsum(
                 "a,d->ad", match_skills_p2_t[..., 0], match_skills_p2_t[..., 1]
             )
-            skill_AH_DH = jnp.einsum(
-                "a,d->ad", match_skills_p1_t[..., 0], match_skills_p1_t[..., 1]
-            )
-            skill_AA_DA = jnp.einsum(
-                "a,d->ad", match_skills_p2_t[..., 0], match_skills_p2_t[..., 1]
-            )
 
             skill_AH_DH_AA_DA = jnp.einsum("ad, ws -> adws", skill_AH_DH, skill_AA_DA)
 
@@ -751,12 +509,7 @@ def maximiser(
             index_2 = match_results_t[1]
 
             emission_max_HA = emission_mat[..., index_1, index_2]
-            emission_max_HA = emission_mat[..., index_1, index_2]
 
-            return -jnp.sum(
-                jnp.log(jnp.where(emission_max_HA == 0, 1e-30, emission_max_HA))
-                * skill_AH_DH_AA_DA
-            )
             return -jnp.sum(
                 jnp.log(jnp.where(emission_max_HA == 0, 1e-30, emission_max_HA))
                 * skill_AH_DH_AA_DA
