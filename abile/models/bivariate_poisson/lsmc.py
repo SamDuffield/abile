@@ -3,7 +3,7 @@ from functools import partial
 
 from jax import numpy as jnp, random, vmap, jit
 from jax.scipy.stats import poisson
-from jax.scipy.special import gammaln, factorial
+from jax.scipy.special import gammaln#, factorial
 
 # from jax.scipy.optimize import minimize
 from scipy.optimize import minimize
@@ -29,6 +29,8 @@ max_goals = 9
 def binom(x, y):
     return jnp.exp(gammaln(x + 1) - gammaln(y + 1) - gammaln(x - y + 1))
 
+def factorial(x):
+    return jnp.exp(gammaln(x + 1))
 
 def single_correlation_factor(k, home_goals, away_goals, lambda_1, lambda_2, lambda_3):
     val = (
