@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pickle
 
 import abile
-from abile import models, datasets
+from abile import models
 
 from datasets.football import load_epl
 
@@ -38,7 +38,7 @@ n_players = train_match_player_indices.max() + 1
 init_player_times = jnp.zeros(n_players)
 
 
-M = 5
+M = 40
 models.bivariate_poisson.discrete.psi_computation(M)
 
 n_em_steps = 10
@@ -50,6 +50,7 @@ discrete_em_init_alpha_h = jnp.log(train_match_results[:, 0].mean())
 discrete_em_init_alpha_a = jnp.log(train_match_results[:, 1].mean())
 discrete_em_init_beta = 0.0
 discrete_em_init_s = M / 5
+
 
 bp_discrete_em_out = abile.expectation_maximisation(
     models.bivariate_poisson.discrete.initiator,
