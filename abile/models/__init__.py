@@ -5,5 +5,4 @@ from abile.models import trueskill
 from abile.models import lsmc
 from abile.models import discrete
 
-from abile.models import dixon_coles
 from abile.models import bivariate_poisson
