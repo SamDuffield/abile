@@ -22,7 +22,7 @@ from abile import times_and_skills_by_player_to_by_match
 
 init_time: float = 0.0
 M: int
-# grad_step_size: float = 1e-5
+optimization_type: str = "gradient"
 grad_step_size: float = 1e-2
 min_prob: float = 1e-10
 
@@ -417,7 +417,7 @@ def maximiser(
     propagate_params: jnp.ndarray,
     update_params: jnp.ndarray,
     i: int,
-    random_key: jnp.ndarray,
+    random_key: jnp.ndarray
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     # no_draw_bool = (update_params[1] == 0.) and (0 not in match_results)
 
@@ -521,22 +521,24 @@ def maximiser(
 
         return jnp.mean(log_like)
 
-    g = grad(negative_expected_log_obs_dens)(update_params[:-1])
+    if optimization_type== "gradient":
+        g = grad(negative_expected_log_obs_dens)(update_params[:-1])
 
-    maxed_small_update_params = update_params[:-1] + grad_step_size * g
-    maxed_update_params = update_params.at[:-1].set(maxed_small_update_params)
+        maxed_small_update_params = update_params[:-1] - grad_step_size * g
+        maxed_update_params = update_params.at[:-1].set(maxed_small_update_params)
 
-    # optim_res = minimize(
-    #     negative_expected_log_obs_dens,
-    #     update_params[:-1],
-    #     method="cobyla",
-    #     options={"maxiter": 10},
-    # )
+    else:
 
-    # assert optim_res.success, "update parameters optimisation failed"
-    # to_update_params = jnp.exp(optim_res.x) - 1
-    # maxed_update_params = jnp.concatenate(
-    #     (to_update_params, jnp.expand_dims(s, axis=0)), axis=0
-    # )
+        optim_res = minimize(
+            negative_expected_log_obs_dens,
+            update_params[:-1],
+            method=optimization_type
+        )
+
+        assert optim_res.success, "update parameters optimisation failed"
+        to_update_params = jnp.exp(optim_res.x) - 1
+        maxed_update_params = jnp.concatenate(
+            (to_update_params, jnp.expand_dims(s, axis=0)), axis=0
+        )
 
     return maxed_initial_params, maxed_tau, maxed_update_params
