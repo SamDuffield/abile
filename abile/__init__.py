@@ -18,4 +18,3 @@ from abile import models
 from abile.models import sigmoids
 
 del version
-
