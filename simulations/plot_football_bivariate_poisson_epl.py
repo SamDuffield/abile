@@ -8,19 +8,27 @@ from abile import models
 
 from datasets.football import load_epl
 
-s = 1.0
 
-exkf_init_var = 0.3
-exkf_tau = 0.01
-exkf_epsilon = 0.3
+init_mean = jnp.zeros(2)
+exkf_init_cov = jnp.array([[0.08750192, 0.06225643], [0.06225643, 0.05477126]])
+exkf_tau = 0.00975808
+exkf_alphas_and_beta = jnp.array([0.26348755, 0.10862826, -4.4856677])
+
 
 # Load football data
 origin_date = pd.to_datetime("2010-07-30")
-match_times, match_player_indices, match_results, id_to_name, name_to_id = load_epl(
-    start_date="2010-07-30", origin_date=origin_date, end_date="2023-08-01"
+match_times, match_player_indices, match_goals, id_to_name, name_to_id = load_epl(
+    start_date="2010-07-30", origin_date=origin_date, end_date="2023-08-01", goals=True
 )
 
-n_matches = len(match_results)
+home_goals = match_goals[:, 0]
+away_goals = match_goals[:, 1]
+
+match_outcomes = jnp.where(
+    home_goals > away_goals, 1, jnp.where(home_goals < away_goals, 2, 0)
+)
+
+n_matches = len(match_outcomes)
 n_players = match_player_indices.max() + 1
 
 init_player_times = jnp.zeros(n_players)
@@ -32,7 +40,7 @@ filter_sweep_data = jit(
         init_player_times=init_player_times,
         match_times=match_times,
         match_player_indices_seq=match_player_indices,
-        match_results=match_results,
+        match_results=match_goals,
         random_key=None,
     ),
     static_argnums=(0,),
@@ -40,14 +48,14 @@ filter_sweep_data = jit(
 
 
 # Run ExKF
-_, init_skills_and_var = models.extended_kalman.initiator(
-    n_players, jnp.array([0, exkf_init_var])
+_, init_skills_and_var = models.bivariate_poisson.extended_kalman.initiator(
+    n_players, jnp.hstack([init_mean.reshape(2, 1), exkf_init_cov])
 )
 filter_out = filter_sweep_data(
-    models.extended_kalman.filter,
+    models.bivariate_poisson.extended_kalman.filter,
     init_player_skills=init_skills_and_var,
     static_propagate_params=exkf_tau,
-    static_update_params=[s, exkf_epsilon],
+    static_update_params=exkf_alphas_and_beta,
 )
 
 times_by_player, filter_by_player = abile.times_and_skills_by_match_to_by_player(
@@ -61,7 +69,10 @@ times_by_player, filter_by_player = abile.times_and_skills_by_match_to_by_player
 
 smoother_by_player = [
     abile.smoother_sweep(
-        models.extended_kalman.smoother, times_sing, filter_sing, exkf_tau
+        models.bivariate_poisson.extended_kalman.smoother,
+        times_sing,
+        filter_sing,
+        exkf_tau,
     )[0]
     for times_sing, filter_sing in zip(times_by_player, filter_by_player)
 ]
@@ -77,34 +88,79 @@ smoother_single = smoother_by_player[player_id]
 
 lw = 1.5
 grey_lw = 1
-grey_alpha = 0.2
+grey_alpha = 0.1
 
-filter_colour = "purple"
-smoother_colour = "forestgreen"
+filter_attack_colour = "violet"
+filter_defence_colour = "lightcoral"
+smoother_attack_colour = "lightseagreen"
+smoother_defence_colour = "limegreen"
 
 
 fig, (filter_ax, smoother_ax) = plt.subplots(
     2, 1, sharex=True, sharey=True, figsize=(10, 7)
 )
-filter_ax.plot(times_single, filter_single[:, 0], color=filter_colour, linewidth=lw)
+# Plot attack
+filter_ax.plot(
+    times_single,
+    filter_single[:, 0, 0],
+    color=filter_attack_colour,
+    linewidth=lw,
+    label="Attack",
+)
 filter_ax.fill_between(
     times_single,
-    filter_single[:, 0] - jnp.sqrt(filter_single[:, 1]),
-    filter_single[:, 0] + jnp.sqrt(filter_single[:, 1]),
-    color=filter_colour,
+    filter_single[:, 0, 0] - jnp.sqrt(filter_single[:, 0, 1]),
+    filter_single[:, 0, 0] + jnp.sqrt(filter_single[:, 0, 1]),
+    color=filter_attack_colour,
     alpha=0.2,
 )
+# Plot defence
+filter_ax.plot(
+    times_single,
+    filter_single[:, 1, 0],
+    color=filter_defence_colour,
+    linewidth=lw,
+    label="Defence",
+)
+filter_ax.fill_between(
+    times_single,
+    filter_single[:, 1, 0] - jnp.sqrt(filter_single[:, 1, 2]),
+    filter_single[:, 1, 0] + jnp.sqrt(filter_single[:, 1, 2]),
+    color=filter_defence_colour,
+    alpha=0.2,
+)
+filter_ax.legend(loc="upper left", facecolor="white", framealpha=1, edgecolor="white")
 
 smoother_ax.plot(
-    times_single, smoother_single[:, 0], color=smoother_colour, linewidth=lw
+    times_single,
+    smoother_single[:, 0, 0],
+    color=smoother_attack_colour,
+    linewidth=lw,
+    label="Attack",
 )
 smoother_ax.fill_between(
     times_single,
-    smoother_single[:, 0] - jnp.sqrt(smoother_single[:, 1]),
-    smoother_single[:, 0] + jnp.sqrt(smoother_single[:, 1]),
-    color=smoother_colour,
+    smoother_single[:, 0, 0] - jnp.sqrt(smoother_single[:, 0, 1]),
+    smoother_single[:, 0, 0] + jnp.sqrt(smoother_single[:, 0, 1]),
+    color=smoother_attack_colour,
     alpha=0.2,
 )
+smoother_ax.plot(
+    times_single,
+    smoother_single[:, 1, 0],
+    color=smoother_defence_colour,
+    linewidth=lw,
+    label="Defence",
+)
+smoother_ax.fill_between(
+    times_single,
+    smoother_single[:, 1, 0] - jnp.sqrt(smoother_single[:, 1, 2]),
+    smoother_single[:, 1, 0] + jnp.sqrt(smoother_single[:, 1, 2]),
+    color=smoother_defence_colour,
+    alpha=0.2,
+)
+smoother_ax.legend(loc="upper left", facecolor="white", framealpha=1, edgecolor="white")
+
 
 for i in range(len(times_by_player)):
     if i != player_id:
@@ -112,18 +168,45 @@ for i in range(len(times_by_player)):
         time_diffs = times_p[1:] - times_p[:-1]
         times_p_split = jnp.split(times_p[1:], jnp.where(time_diffs > 150)[0])
         filter_split = jnp.split(
-            filter_by_player[i][1:, 0], jnp.where(time_diffs > 150)[0]
+            filter_by_player[i][1:], jnp.where(time_diffs > 150)[0]
         )
         smoother_split = jnp.split(
-            smoother_by_player[i][1:, 0], jnp.where(time_diffs > 150)[0]
+            smoother_by_player[i][1:], jnp.where(time_diffs > 150)[0]
         )
         for t, f, s in zip(times_p_split, filter_split, smoother_split):
             filter_ax.plot(
-                t, f, color="grey", linewidth=grey_lw, alpha=grey_alpha, zorder=0
+                t,
+                f[:, 0, 0],
+                color="grey",
+                linewidth=grey_lw,
+                alpha=grey_alpha,
+                zorder=0,
+            )
+            filter_ax.plot(
+                t,
+                f[:, 1, 0],
+                color="grey",
+                linewidth=grey_lw,
+                alpha=grey_alpha,
+                zorder=0,
             )
             smoother_ax.plot(
-                t, s, color="grey", linewidth=grey_lw, alpha=grey_alpha, zorder=0
+                t,
+                s[:, 0, 0],
+                color="grey",
+                linewidth=grey_lw,
+                alpha=grey_alpha,
+                zorder=0,
             )
+            smoother_ax.plot(
+                t,
+                s[:, 1, 0],
+                color="grey",
+                linewidth=grey_lw,
+                alpha=grey_alpha,
+                zorder=0,
+            )
+
 
 start_time = 300
 filter_ax.set_yticks([])
@@ -182,7 +265,7 @@ filter_ax.set_xlim([start_time, times_single.max() + 50])
 
 
 fig.tight_layout()
-fig.savefig("results/tottenham_exkf.pdf", dpi=300)
+fig.savefig("results/tottenham_bp_exkf.pdf", dpi=300)
 
 
 plt.show(block=True)

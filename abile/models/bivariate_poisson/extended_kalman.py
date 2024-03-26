@@ -49,7 +49,7 @@ def likelihood_matrix(lambda_1, lambda_2, lambda_3) -> jnp.ndarray:
 
 
 def initiator(
-    num_players: int, init_mean_and_cov: jnp.ndarray, random_key: jnp.ndarray
+    num_players: int, init_mean_and_cov: jnp.ndarray, _: jnp.ndarray = None
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     initiated_time = jnp.zeros(num_players) + init_time
     initiated_skills = jnp.ones((num_players, 2, 3)) * init_mean_and_cov
