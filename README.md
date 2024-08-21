@@ -2,7 +2,7 @@
 
 `abile`, italian for _skilful_
 
-Find the accompanied paper on arxiv: [A State-Space Perspective on Modelling and Inference for Online Skill Rating](https://arxiv.org/abs/2308.02414).
+Check out the accompanied paper, now published at JRSSSC: [A State-Space Perspective on Modelling and Inference for Online Skill Rating](https://doi.org/10.1093/jrsssc/qlae035).
 
 ## Install
 
@@ -26,10 +26,15 @@ Chess data from [github.com/huffyhenry](https://github.com/huffyhenry/forecastin
 
 ## Citation
 ```
-@article{duffield2023statespace,
-      title={A State-Space Perspective on Modelling and Inference for Online Skill Rating}, 
-      author={Samuel Duffield and Samuel Power and Lorenzo Rimella},
-      journal={arXiv preprint arXiv:2308.02414},
-      year={2023}
+@article{duffield2024statespace,
+    author = {Duffield, Samuel and Power, Samuel and Rimella, Lorenzo},
+    title = "{A state-space perspective on modelling and inference for online skill rating}",
+    journal = {Journal of the Royal Statistical Society Series C: Applied Statistics},
+    year = {2024},
+    month = {08},
+    issn = {0035-9254},
+    doi = {10.1093/jrsssc/qlae035},
+    url = {https://doi.org/10.1093/jrsssc/qlae035},
+    eprint = {https://academic.oup.com/jrsssc/advance-article-pdf/doi/10.1093/jrsssc/qlae035/58837659/qlae035.pdf},
 }
 ```
