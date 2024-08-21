@@ -2,7 +2,7 @@
 
 `abile`, italian for _skilful_
 
-Checkout the accompanied paper, now published at JRSSSC: [A State-Space Perspective on Modelling and Inference for Online Skill Rating](https://doi.org/10.1093/jrsssc/qlae035).
+Check out the accompanied paper, now published at JRSSSC: [A State-Space Perspective on Modelling and Inference for Online Skill Rating](https://doi.org/10.1093/jrsssc/qlae035).
 
 ## Install
 
